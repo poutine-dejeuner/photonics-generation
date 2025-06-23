@@ -1,0 +1,10 @@
+models/__pycache__/
+slurm/
+*.png
+__pycache__/
+*/checkpoint.pt
+checkpoint.pt
+images/
+wandb/
+train3/
+

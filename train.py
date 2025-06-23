@@ -112,7 +112,7 @@ def display_reverse(images: List):
     plt.show()
 
 def main():
-    #train(checkpoint_path='checkpoints/ddpm_checkpoint', lr=2e-6, num_epochs=5)
+    train(checkpoint_path='checkpoints/ddpm_checkpoint', lr=2e-6, num_epochs=5)
     inference('checkpoints/ddpm_checkpoint2')
 
 if __name__ == '__main__':
