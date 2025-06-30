@@ -35,14 +35,14 @@ def train(data: np.ndarray,
           checkpoint_dir: str = None,
           batch_size: int = 16,
           num_time_steps: int = 1000,
-          num_epochs: int = 15,
+          n_epochs: int = 15,
           seed: int = -1,
           ema_decay: float = 0.9999,
           lr=2e-5,
           run = None,
           **kwargs):
     print("TRAINING")
-    print(f"{num_epochs} epochs total")
+    print(f"{n_epochs} epochs total")
     set_seed(random.randint(0, 2**32-1)) if seed == -1 else set_seed(seed)
     dtype = torch.float32
 
@@ -70,7 +70,7 @@ def train(data: np.ndarray,
         optimizer.load_state_dict(checkpoint['optimizer'])
     criterion = nn.MSELoss(reduction='mean')
 
-    for i in range(num_epochs):
+    for i in range(n_epochs):
         total_loss = 0
         for bidx, x in enumerate(train_loader):
             x = x[0]
@@ -101,27 +101,36 @@ def train(data: np.ndarray,
     #report_objective(loss.item(), 'loss')
 
 def inference(checkpoint_path: str = None,
+              n_images: int = 10,
               num_time_steps: int = 1000,
               ema_decay: float = 0.9999,
-              savepath: str = "images",):
+              savepath: str = "images",
+              **kwargs,):
     print("INFERENCE")
     checkpoint_path = os.path.join(checkpoint_path, "checkpoint.pt")
     checkpoint = torch.load(checkpoint_path, weights_only=True)
+
+    image_shape = (101, 91)
+
     model = UNET().cuda()
+    N = 0
+    params = list(model.parameters())
+    for p in params:
+        N += p.numel()
+    ic(N)
+
     model.load_state_dict(checkpoint['weights'])
     ema = ModelEmaV3(model, decay=ema_decay)
     ema.load_state_dict(checkpoint['ema'])
     scheduler = DDPM_Scheduler(num_time_steps=num_time_steps)
     times = [0, 15, 50, 100, 200, 300, 400, 550, 700, 999]
     images = []
-    image_shape = (101, 91)
     z = torch.randn((1,1,)+image_shape)
     padding_fn = UNetPad(z, depth=model.num_layers//2)
 
     with torch.no_grad():
         samples = []
         model = ema.module.eval()
-        n_images = 10 if debug is False else 1
         for i in tqdm(range(n_images)):
             z = torch.randn((1,1,)+image_shape)
             z = padding_fn(z)
@@ -151,6 +160,7 @@ def inference(checkpoint_path: str = None,
     samples = torch.concat(samples, dim=0)
     samples = padding_fn.inverse(samples).squeeze()
     samples = samples.cpu().numpy()
+    samples = (samples - samples.min()) / (samples.max() - samples.min())
     np.save(os.path.join(savepath, "images.npy"), samples)
 
 
@@ -163,28 +173,37 @@ def display_reverse(images: List, savepath: str, idx: int):
         ax.imshow(x)
         ax.axis('off')
     plt.savefig(os.path.join(savepath, f"im{idx}.png"))
+    plt.clf()
 
 
 def main(checkpoint_path, configs):
     datapath = "~/scratch/nanophoto/topoptim/fulloptim/images.npy"
     datapath = os.path.expanduser(datapath)
     data = np.load(datapath)
-    n_samples = data.shape[0] if debug is False else 16
+    n_samples = data.shape[0]
+    configs["n_epochs"] = int(5e6 / n_samples)
+
+    if debug is True:
+        configs["n_images"] = 1
+        configs["n_samples"] = 16
+        configs["n_epochs"] = 1
+        configs["n_epochs"] = 1
+
     data = data[:n_samples]
-    num_epochs = int(5e6 / n_samples) if debug is False else 2
-    configs["num_epochs"] = num_epochs
     if inference_only is False:
         # run = make_wandb_run()
         train(data, checkpoint_path, **configs)
     images_savepath = os.path.join(checkpoint_path, "images")
     os.makedirs(images_savepath, exist_ok=True)
-    inference(checkpoint_path=checkpoint_path, savepath=images_savepath)
+    inference(checkpoint_path=checkpoint_path, savepath=images_savepath,
+            **configs)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_steps', type=int, default=int(5e6))
     parser.add_argument('--n_time_steps', type=int, default=1000)
+    parser.add_argument('--n_images', type=int, default=10)
     parser.add_argument('--ema_decay', type=float, default=0.9999)
     parser.add_argument('--lr', type=float, default=1e-5)
     parser.add_argument('--chkptdir', type=str, default=None)

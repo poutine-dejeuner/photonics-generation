@@ -1,0 +1,7 @@
+debug: False
+checkpoint_path: ~/repos/diffusion-model/checkpoint.pt
+guide_file: ~/repos/diffusion-model/guided_gen/guide.npy
+num_time_steps: 1000
+ema_decay: 0.9999
+savepath: images
+image_shape: [101, 91]

@@ -1,6 +1,16 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 import wandb
+
+
+def normalize(x:torch.Tensor|np.ndarray):
+    return (x - x.min()) / (x.max() - x.min())
+
+class AttrDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
 
 def make_wandb_run(config, data_path, group_name, run_name):
      wandb_dir = os.path.expanduser(data_path + "wandb/")

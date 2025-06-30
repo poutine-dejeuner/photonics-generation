@@ -1,0 +1,19 @@
+-------------
+24 juin 
+-------------
+yuri: slides with dataset info, model dimensions, time to train, etc 
+
+for the manual design experiment, start with a simple trapezoid waveguide or
+even simpler half ones half zeros split vertically.
+
+A FAIRE:
+un modele de diffusion avec les sommes de gaussiennes entrainé sur topoptim et
+les paramètres optimisés. le bruit est ajouté aux paramètres plutot qu'à
+l'image directement.
+
+
+-------------
+23 juin 2024
+-------------
+Le modèle de diffusion fonctionne finalement. Les images générées sont toutes
+dans l'intervalle > 0.48. Le modele a été entrain
