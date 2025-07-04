@@ -1,11 +1,13 @@
+multirun/
 outputs/
 models/__pycache__/
 slurm/
-*.png
 __pycache__/
-*/checkpoint.pt
-checkpoint.pt
 images/
 wandb/
 train3/
+checkpoint.pt
+*.png
+*/checkpoint.pt
+test.py
 

@@ -26,12 +26,16 @@ def guided_gen(init_image, cfg):
     num_time_steps = int(cfg.num_time_steps)
     if init_image.ndim > 2:
         n_images = init_image.shape[0]
-    else:
+    elif init_image.ndim == 2:
         n_images = 1
+        init_image = init_image.unsqueeze(0)
     if isinstance(init_image, np.ndarray):
         init_image = torch.tensor(init_image)
 
     model = UNET().cuda()
+    dtype = next(model.parameters()).dtype
+    init_image = init_image.to(dtype)
+
 
     model.load_state_dict(checkpoint['weights'])
     ema = ModelEmaV3(model, decay=cfg.ema_decay)
@@ -39,16 +43,17 @@ def guided_gen(init_image, cfg):
     scheduler = DDPM_Scheduler(num_time_steps=num_time_steps)
     times = [0, 15, 50, 100, 200, 300, 400, 550, 700, 999]
     images = []
-    z = init_image.unsqueeze(0).unsqueeze(0)
-    # z = torch.randn((1, 1, )+image_shape)
+    z = torch.randn((1, 1, ) + image_shape)
     padding_fn = UNetPad(z, depth=model.num_layers//2)
+    padded_image_shape = padding_fn(z).shape[-2:]
+    init_image = padding_fn(init_image)
 
     with torch.no_grad():
         samples = []
         model = ema.module.eval()
         for i in tqdm(range(n_images)):
-            z = torch.randn((1, 1, )+image_shape)
-            z = padding_fn(z)
+            z = init_image[i].unsqueeze(0)
+            ic(z.shape, z.min(), z.max())
 
             for t in reversed(range(1, num_time_steps)):
                 t = [t]
@@ -59,8 +64,7 @@ def guided_gen(init_image, cfg):
                 - (temp*model(z.cuda(), t).cpu())
                 if t[0] in times:
                     images.append(z)
-                e = torch.randn((1, 1,) + image_shape)
-                e = padding_fn(e)
+                e = torch.randn((1, 1,) + padded_image_shape)
                 z = z + (e*sqrt(scheduler.beta[t]))
             temp = scheduler.beta[0]/((sqrt(1-scheduler.alpha[0]))
                                       * (sqrt(1-scheduler.beta[0])))
@@ -81,7 +85,7 @@ def guided_gen(init_image, cfg):
     return samples
 
 
-def comparison_test(guide, guide_generated, random_generated, idx=""):
+def comparison_test(guide, noisy_guide, guide_generated, random_generated, savepath, idx=""):
     print("Dot prod of guide with guided gen and random gen")
     gflat = guide.flatten()
     ggflat = guide_generated.flatten()
@@ -95,16 +99,19 @@ def comparison_test(guide, guide_generated, random_generated, idx=""):
     d2 = np.linalg.norm(gflat - rgflat)
     print(d1, d2)
 
-    _, axes = plt.subplots(1, 3)
+    _, axes = plt.subplots(1, 4)
     axes[0].imshow(guide)
     axes[0].set_title("guide")
     axes[0].axis("off")
-    axes[1].imshow(guide_generated)
-    axes[1].set_title("guide generated")
+    axes[1].imshow(noisy_guide)
+    axes[1].set_title("noisy guide")
     axes[1].axis("off")
-    axes[2].imshow(random_generated)
-    axes[2].set_title("random generated")
+    axes[2].imshow(guide_generated)
+    axes[2].set_title("guide gen")
     axes[2].axis("off")
+    axes[3].imshow(random_generated)
+    axes[3].set_title("random gen")
+    axes[3].axis("off")
     plt.savefig("gen_comparison" + idx + ".png")
 
 
@@ -114,13 +121,15 @@ def main(cfg):
     debug = cfg.debug
     guide_file = os.path.expanduser(cfg.guide_file)
     guide = torch.tensor(np.load(guide_file))
-    for scale in range(1, 6):
-        noise = torch.randn(101, 91)
-        noisy_guide = guide + scale * noise
-        noisy_guide = normalize(noisy_guide)
-        guided_gen_image = guided_gen(noisy_guide, cfg)
-        rand_guide_image = guided_gen(noise, cfg)
-        comparison_test(guide, guided_gen_image, rand_guide_image, str(scale))
+    for i in range(4):
+        scale = 1 ** (-i)
+        noise = torch.randn(1, 1, 101, 91)
+        noisy_guide = scale * guide + noise
+        # noisy_guide = normalize(noisy_guide)
+        guided_gen_image = guided_gen(noisy_guide, cfg).squeeze()
+        rand_guide_image = guided_gen(noise, cfg).squeeze()
+        comparison_test(guide.squeeze(), noisy_guide.squeeze(),
+                guided_gen_image, rand_guide_image, cfg.savepath, str(i))
 
 
 if __name__ == "__main__":
