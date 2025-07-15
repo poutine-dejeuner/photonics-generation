@@ -3,7 +3,7 @@ defaults:
 # general
 debug: False
 checkpoint_load_path: ~/repos/diffusion-model/checkpoint.pt
-data_path: ~/scratch/nanophoto/topoptim/fulloptim/images.npy
+data_path: ~/scratch/nanophoto/topoptim/fulloptim/params.npy
 guide_file: ~/repos/diffusion-model/guided_gen/guide.npy
 savepath: images
 num_time_steps: 1000

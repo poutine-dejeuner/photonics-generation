@@ -3,7 +3,7 @@
 #SBATCH --gres=gpu:40gb
 #SBATCH -c 8
 #SBATCH --mem=40G
-#SBATCH -t 09:00:00                                 
+#SBATCH -t 60:00:00                                 
 #SBATCH --output slurm/%j.out
 #SBATCH --error slurm/%j.err
 #SBATCH --mail-user=vincentmillions@gmail.com

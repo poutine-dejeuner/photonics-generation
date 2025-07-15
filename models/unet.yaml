@@ -1,0 +1,6 @@
+
+lr: 0.00005 
+n_epochs: 1
+ema_decay: 0.9999
+image_shape: [101, 91]
+batch_size: 16

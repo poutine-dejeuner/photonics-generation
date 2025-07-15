@@ -5,6 +5,11 @@ import torch
 import torch.nn.functional as F
 import wandb
 
+from models.unet import UNET
+
+def get_model(config):
+    if config.model == "UNet":
+        return UNET(config.model)
 
 def normalize(x:torch.Tensor|np.ndarray):
     return (x - x.min()) / (x.max() - x.min())
@@ -15,7 +20,8 @@ class AttrDict(dict):
         self.__dict__ = self
 
 def make_wandb_run(config, data_path, group_name, run_name):
-     wandb_dir = os.path.expanduser(data_path + "wandb/")
+     wandb_dir = os.path.join(data_path, "wandb")
+     wandb_dir = os.path.expanduser(wandb_dir)
      if not os.path.isdir(wandb_dir):
          os.mkdir(wandb_dir)
      print(run_name)

@@ -1,0 +1,17 @@
+defaults:
+  - model: unet
+  - override hydra/sweeper: orion
+
+# general
+debug: False
+checkpoint_load_path: ~/repos/diffusion-model/checkpoint.pt
+data_path: ~/scratch/nanophoto/topoptim/fulloptim/images.npy
+guide_file: ~/repos/diffusion-model/guided_gen/guide.npy
+savepath: images
+
+
+# inference
+inference_only: False
+n_images: 256
+
+logger: True

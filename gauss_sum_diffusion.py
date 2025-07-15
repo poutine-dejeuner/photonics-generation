@@ -1,6 +1,8 @@
 """
-modele de diffusion, apprendre à générer les design
+modele de diffusion génère les paramètres de design comme somme de gaussiennes
 """
+
+
 import os
 import random
 from tqdm import tqdm
@@ -17,9 +19,9 @@ import matplotlib.pyplot as plt
 import torch.optim as optim
 from timm.utils import ModelEmaV3
 import hydra
-from omegaconf import OmegaConf
 
 # from models.ddpm_basic import ddpm_simple
+from models.unet import UNET
 from models.utils import DDPM_Scheduler, set_seed
 
 from utils import UNetPad, make_wandb_run
@@ -27,18 +29,13 @@ from nanophoto.meep_compute_fom import compute_FOM_parallele
 
 # from orion.client import report_objective
 from icecream import ic, install
-
 ic.configureOutput(includeContext=True)
 install()
-OmegaConf.register_new_resolver("eval", eval)
-# OmegaConf.register_new_resolver("eval", lambda expr: eval(expr))
-
 
 
 def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
           run=None):
     seed = -1
-    ic(cfg)
     n_epochs = cfg.n_epochs
     lr = cfg.lr
     batch_size = cfg.batch_size
@@ -54,11 +51,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
     data = data.unsqueeze(1)
 
     scheduler = DDPM_Scheduler(num_time_steps=num_time_steps)
-
-    ic(cfg._target_)
-    model = hydra.utils.instantiate(cfg)
-    breakpoint()
-    # model = UNET().cuda()
+    model = UNET().cuda()
     depth = model.num_layers//2
 
     transform = UNetPad(data, depth=depth)
@@ -183,17 +176,19 @@ def display_reverse(images: List, savepath: str, idx: int):
         ax.imshow(x)
         ax.axis('off')
     plt.savefig(os.path.join(savepath, f"im{idx}.png"))
-    plt.close()
+    plt.clf()
 
 
-@hydra.main(config_path="config", config_name="config")
+@hydra.main(config_path=".", config_name="config")
 def main(cfg):
-    OmegaConf.set_struct(cfg, False)
-    savedir = 'nanophoto/diffusion/train3/'
+
+    savedir = 'nananophoto/diffusion/train3/'
     savedir = os.path.join(os.environ["SCRATCH"], savedir)
     if cfg.debug:
         savedir = os.path.join(savedir, 'debug')
     else:
+        # date = datetime.datetime.now().strftime("%m-%d_%Hh%M")
+        # savedir = os.path.join(savedir, date)
         jobid = os.environ["SLURM_JOB_ID"]
         savedir = os.path.join(savedir, jobid)
     if cfg.inference_only:
@@ -204,16 +199,17 @@ def main(cfg):
     os.makedirs(savedir, exist_ok=True)
     datapath = os.path.expanduser(cfg.data_path)
     data = np.load(datapath)
-
-    modcfg = cfg.model
-    n_samples = data.shape[0] if modcfg.n_samples == -1 else modcfg.n_samples 
+    n_samples = cfg.n_samples
+    if n_samples == -1:
+        n_samples = data.shape[0]
     data = data[:n_samples]
-    modcfg.n_epochs = int(modcfg.n_compute_steps / n_samples)
+    cfg.n_epochs = int(5e6 / n_samples)
 
     if cfg.debug:
-        modcfg.n_images = 1
-        modcfg.n_samples = 16
-        modcfg.n_epochs = 1
+        cfg.n_images = 1
+        cfg.n_samples = 16
+        cfg.n_epochs = 1
+        cfg.n_epochs = 1
 
     if cfg.inference_only is False:
         run = None
@@ -222,7 +218,7 @@ def main(cfg):
                                  group_name="diffusion data scaling",
                                  run_name=os.environ["SLURM_JOB_ID"])
         train(data=data, checkpoint_path=checkpoint_path,
-              savedir=savedir, run=run, cfg=modcfg)
+              savedir=savedir, run=run, cfg=cfg)
     images_savepath = os.path.join(savedir, "images")
     os.makedirs(images_savepath, exist_ok=True)
     images, fom = inference(checkpoint_path=checkpoint_path, savepath=images_savepath,
@@ -230,7 +226,6 @@ def main(cfg):
     plt.hist(fom, bins=100)
     plt.title("fom histogram")
     plt.savefig(os.path.join(savedir, "hist.png"))
-    plt.close()
     return fom.mean()
 
 if __name__ == '__main__':

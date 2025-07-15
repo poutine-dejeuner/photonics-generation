@@ -31,7 +31,7 @@ def train(batch_size: int=64,
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=4)
 
     scheduler = DDPM_Scheduler(num_time_steps=num_time_steps)
-    model = UNET().cuda()
+    # model = UNET().cuda()
     optimizer = optim.Adam(model.parameters(), lr=lr)
     ema = ModelEmaV3(model, decay=ema_decay)
     if checkpoint_path is not None:
