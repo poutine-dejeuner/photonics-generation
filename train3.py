@@ -42,6 +42,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
     num_time_steps = cfg.num_time_steps
     ema_decay = cfg.ema_decay
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ic(device)
 
     print("TRAINING")
     print(f"{n_epochs} epochs total")
@@ -105,6 +106,59 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
     return total_loss
 
 
+def inference_parallele(cfg,
+                        checkpoint_path: str = None,
+                        savepath: str = "images",
+                        meep_eval: bool = True,
+                        ):
+    num_time_steps = cfg.model.num_time_steps
+    ema_decay = cfg.model.ema_decay
+    n_images = cfg.n_images if cfg.debug is False else 1
+    image_shape = tuple(cfg.image_shape)
+
+    print("INFERENCE")
+    checkpoint = torch.load(checkpoint_path, weights_only=True)
+    device = torch.device("cuda")
+
+    model = hydra.utils.instantiate(cfg.model)
+    model = model.to(device)
+
+    model.load_state_dict(checkpoint['weights'])
+    ema = ModelEmaV3(model, decay=ema_decay)
+    ema.load_state_dict(checkpoint['ema'])
+    scheduler = DDPM_Scheduler(num_time_steps=num_time_steps)
+    times = [0, 15, 50, 100, 200, 300, 400, 550, 700, 999]
+    images = []
+    z = torch.randn((1, 1,)+image_shape)
+    padding_fn = UNetPad(z, depth=model.num_layers//2)
+
+    with torch.no_grad():
+        model = ema.module.eval()
+        z = torch.randn((n_images, 1,)+image_shape)
+        z = padding_fn(z)
+
+        for t in tqdm(reversed(range(1, num_time_steps))):
+            t = [t]
+            temp = (scheduler.beta[t]/((torch.sqrt(1-scheduler.alpha[t]))
+                                       * (torch.sqrt(1-scheduler.beta[t]))))
+            z = (
+                1/(torch.sqrt(1-scheduler.beta[t])))*z - (temp*model(z.cuda(), t).cpu())
+            if t[0] in times:
+                images.append(z)
+            e = torch.randn((1, 1,) + image_shape)
+            e = padding_fn(e)
+            z = z + (e*torch.sqrt(scheduler.beta[t]))
+            torch.cuda.empty_cache()  # Free up unused memory
+        temp = scheduler.beta[0]/(torch.sqrt(1-scheduler.alpha[0]) * torch.sqrt(1-scheduler.beta[0]))
+        x = (1/(torch.sqrt(1-scheduler.beta[0]))) * z - (temp*model(z.cuda(), [0]).cpu())
+
+    x = rearrange(x, 'b c h w -> b h w c').detach()
+    samples = x.cpu().numpy().squeeze()
+    samples = padding_fn.inverse(samples).squeeze()
+    samples = (samples - samples.min()) / (samples.max() - samples.min())
+    return samples
+
+
 def inference(cfg,
               checkpoint_path: str = None,
               savepath: str = "images",
@@ -148,10 +202,8 @@ def inference(cfg,
                 e = torch.randn((1, 1,) + image_shape)
                 e = padding_fn(e)
                 z = z + (e*torch.sqrt(scheduler.beta[t]))
-            temp = scheduler.beta[0]/((torch.sqrt(1-scheduler.alpha[0]))
-                                      * (torch.sqrt(1-scheduler.beta[0])))
-            x = (1/(torch.sqrt(1-scheduler.beta[0]))) * \
-                z - (temp*model(z.cuda(), [0]).cpu())
+            temp = scheduler.beta[0]/((torch.sqrt(1-scheduler.alpha[0])) * (torch.sqrt(1-scheduler.beta[0])))
+            x = (1/(torch.sqrt(1-scheduler.beta[0])) * z - temp*model(z.cuda(), [0]).cpu())
 
             samples.append(x)
             images.append(x)

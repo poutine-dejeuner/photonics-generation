@@ -11,24 +11,31 @@ import hydra
 from omegaconf import OmegaConf
 
 
-from train3 import inference
+from train3 import inference_parallele
 from nanophoto.evaluation.evalgen import eval_metrics
 
 @hydra.main(config_path="config", config_name="config")
 def test__inference(cfg):
     for n in range(2, 8):
         n_samples = 2 ** n
+        ic(n_samples)
         OmegaConf.set_struct(cfg, False)
         checkpoint_path = os.path.expanduser(cfg.checkpoint_load_path)
         images_savepath = "test"
         os.makedirs(images_savepath, exist_ok=True)
         t0 = time.time()
-        images, fom = inference(cfg=cfg,
+        images = inference_parallele(cfg=cfg,
                                 checkpoint_path=checkpoint_path,
                                 savepath=images_savepath,
                                 meep_eval=True)
         t1 = time.time()
         ic(t1-t0, n_samples)
+        fig, axes = plt.subplots(4,4)
+        for i, ax in enumerate(axes.flatten()):
+            ax.axis('off')
+            ax.imshow(images[i].cpu().numpy().squeeze())
+        plt.tight_layout()
+        plt.savefig(os.path.join("test", f"test_{n_samples}.png"))
 
 @hydra.main(config_path="config", config_name="inference")
 def main(cfg):
