@@ -11,7 +11,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from einops import rearrange
-# from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
 import torch.optim as optim
@@ -19,11 +18,11 @@ from timm.utils import ModelEmaV3
 import hydra
 from omegaconf import OmegaConf
 
-# from models.ddpm_basic import ddpm_simple
 from models.utils import DDPM_Scheduler, set_seed
 
 from utils import UNetPad, make_wandb_run
 from nanophoto.meep_compute_fom import compute_FOM_parallele
+from nanophoto.evaluation.evalgen import eval_metrics
 
 # from orion.client import report_objective
 from icecream import ic, install
@@ -34,16 +33,15 @@ OmegaConf.register_new_resolver("eval", eval)
 # OmegaConf.register_new_resolver("eval", lambda expr: eval(expr))
 
 
-
 def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
           run=None):
     seed = -1
-    ic(cfg)
     n_epochs = cfg.n_epochs
     lr = cfg.lr
     batch_size = cfg.batch_size
     num_time_steps = cfg.num_time_steps
     ema_decay = cfg.ema_decay
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     print("TRAINING")
     print(f"{n_epochs} epochs total")
@@ -55,10 +53,8 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
 
     scheduler = DDPM_Scheduler(num_time_steps=num_time_steps)
 
-    ic(cfg._target_)
     model = hydra.utils.instantiate(cfg)
-    breakpoint()
-    # model = UNET().cuda()
+    model = model.to(device)
     depth = model.num_layers//2
 
     transform = UNetPad(data, depth=depth)
@@ -87,7 +83,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
             a = scheduler.alpha[t].view(batch_size, 1, 1, 1).cuda()
             x = (torch.sqrt(a)*x) + (torch.sqrt(1-a)*e)
             x = transform(x)
-            output = model(x, t)
+            output = model(x, t.to(device))
             optimizer.zero_grad()
             output = transform.inverse(output)
             loss = criterion(output, e)
@@ -112,16 +108,18 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
 def inference(cfg,
               checkpoint_path: str = None,
               savepath: str = "images",
+              meep_eval: bool = True,
               ):
-    num_time_steps = cfg.num_time_steps
-    ema_decay = cfg.ema_decay
-    n_images = cfg.n_images
+    num_time_steps = cfg.model.num_time_steps
+    ema_decay = cfg.model.ema_decay
+    n_images = cfg.n_images if cfg.debug is False else 1
     image_shape = tuple(cfg.image_shape)
 
     print("INFERENCE")
     checkpoint = torch.load(checkpoint_path, weights_only=True)
 
-    model = UNET().cuda()
+    model = hydra.utils.instantiate(cfg.model)
+    model = model.to("cuda")
 
     model.load_state_dict(checkpoint['weights'])
     ema = ModelEmaV3(model, decay=ema_decay)
@@ -167,9 +165,15 @@ def inference(cfg,
     samples = (samples - samples.min()) / (samples.max() - samples.min())
     np.save(os.path.join(savepath, "images.npy"), samples)
 
-    fom = compute_FOM_parallele(samples)
-    ic(fom)
-    np.save(os.path.join(savepath, "fom.npy"), fom)
+    if meep_eval:
+        if cfg.debug is False:
+            fom_fn = compute_FOM_parallele 
+        else:
+            fom_fn = lambda x: np.random.rand(x.shape[0])
+        fom = fom_fn(samples)
+        np.save(os.path.join(savepath, "fom.npy"), fom)
+    else:
+        fom = np.empty((0,))
 
     return samples, fom
 
@@ -206,7 +210,7 @@ def main(cfg):
     data = np.load(datapath)
 
     modcfg = cfg.model
-    n_samples = data.shape[0] if modcfg.n_samples == -1 else modcfg.n_samples 
+    n_samples = cfg.hydra.sweeper.params.n_samples
     data = data[:n_samples]
     modcfg.n_epochs = int(modcfg.n_compute_steps / n_samples)
 
@@ -231,6 +235,9 @@ def main(cfg):
     plt.title("fom histogram")
     plt.savefig(os.path.join(savedir, "hist.png"))
     plt.close()
+    dataset_cfg = OmegaConf.create([{"name":os.environ["SLURM_JOB_ID"],
+                   "path": images_savepath}])
+    eval_metrics(dataset_cfg, os.path.dirname(datapath))
     return fom.mean()
 
 if __name__ == '__main__':

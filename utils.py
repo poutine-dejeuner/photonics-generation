@@ -4,36 +4,56 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import wandb
+import matplotlib.pyplot as plt
+from einops import rearrange
 
 from models.unet import UNET
+
+
+def display_reverse(images: list, savepath: str, idx: int):
+    fig, axes = plt.subplots(1, 10, figsize=(10, 1))
+    for i, ax in enumerate(axes.flat):
+        x = images[i].squeeze(0)
+        x = rearrange(x, 'c h w -> h w c')
+        x = x.numpy()
+        ax.imshow(x)
+        ax.axis('off')
+    plt.savefig(os.path.join(savepath, f"im{idx}.png"))
+    plt.close()
+
 
 def get_model(config):
     if config.model == "UNet":
         return UNET(config.model)
 
-def normalize(x:torch.Tensor|np.ndarray):
+
+def normalize(x: torch.Tensor | np.ndarray):
     return (x - x.min()) / (x.max() - x.min())
+
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
         super(AttrDict, self).__init__(*args, **kwargs)
         self.__dict__ = self
 
+
 def make_wandb_run(config, data_path, group_name, run_name):
-     wandb_dir = os.path.join(data_path, "wandb")
-     wandb_dir = os.path.expanduser(wandb_dir)
-     if not os.path.isdir(wandb_dir):
-         os.mkdir(wandb_dir)
-     print(run_name)
-     run = wandb.init(project='nanophoto', config=config, entity="nanophoto",
-                      group=group_name, name=run_name, dir=wandb_dir)
-     return run
+    wandb_dir = os.path.join(data_path, "wandb")
+    wandb_dir = os.path.expanduser(wandb_dir)
+    if not os.path.isdir(wandb_dir):
+        os.mkdir(wandb_dir)
+    print(run_name)
+    run = wandb.init(project='nanophoto', config=config, entity="nanophoto",
+                     group=group_name, name=run_name, dir=wandb_dir)
+    return run
+
 
 class UNetPad():
     """
     Pads a tensor x of shape (B, C, H, W) so that H and W are divisible by 2^depth.
     Returns the padded tensor and the slices to undo the padding.
     """
+
     def __init__(self, sample: torch.Tensor, depth: int):
         self.depth = depth
         _, _, h, w = sample.shape
@@ -42,7 +62,7 @@ class UNetPad():
         pad_h = target_h - h
         pad_w = target_w - w
         self.pad = (0, pad_w, 0, pad_h)  # pad W then H
-        self.unpad_slices = [slice(0, h), slice(0,w)]
+        self.unpad_slices = [slice(0, h), slice(0, w)]
 
     def __call__(self, x):
         return F.pad(x, self.pad)
@@ -64,6 +84,7 @@ def pad_to_unet(x: torch.Tensor, depth: int = 4):
     pad = (0, pad_w, 0, pad_h)  # pad W then H
     x_padded = F.pad(x, pad)
     return x_padded, (slice(0, h), slice(0, w))  # for unpadding later
+
 
 class unet_pad_fun():
     def __init__(self, num_layers, data_sample):
@@ -96,4 +117,3 @@ class unet_pad_fun():
         a, b, c, d = self.padding[:4]
         cropped_tensor = x[..., a:-b, c:-d]
         return cropped_tensor
-

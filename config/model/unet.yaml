@@ -9,4 +9,8 @@ batch_size: 16
 
 _target_: models.unet.UNET
 
+train:
+   _target_: models.unet.train
 
+inference:
+   _target_: models.unet.inference
