@@ -1,0 +1,9 @@
+# @package _global_
+image_shape: [101, 91]
+
+inference:
+   _target_: models.unet.inference
+   n_images: 256
+   batch_size: 8
+   fom_eval: False
+   guide: ~/scratch/nanophoto/topoptim/lowfom/distselect/images.npy

@@ -1,0 +1,14 @@
+n_time_steps: 1000
+ema_decay: 0.9999
+
+_target_: models.unet.UNET
+Channels: [32, 64, 128, 256, 256, 192]  # Réduction des canaux
+Attentions: [False, False, True, False, False, True]  # Moins de couches d'attention  
+Upscales: [False, False, False, True, True, True]
+num_groups: 16  # Réduction du nombre de groupes
+dropout_prob: 0.1
+num_heads: 4  # Réduction du nombre de têtes d'attention
+input_channels: 1
+output_channels: 1
+device: 'cuda'
+time_steps: 1000

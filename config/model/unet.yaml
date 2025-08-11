@@ -1,16 +1,4 @@
-num_time_steps: 1000
-num_epochs: 15
-seed: -1
+n_time_steps: 1000
 ema_decay: 0.9999
-lr: 0.00002
-n_samples: -1
-n_compute_steps: 5000000
-batch_size: 16
 
 _target_: models.unet.UNET
-
-# train:
-#    _target_: models.unet.train
-#
-# inference:
-#    _target_: models.unet.inference

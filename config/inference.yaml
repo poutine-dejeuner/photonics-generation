@@ -4,12 +4,12 @@ savepath: images
 
 # inference
 inference_only: True
-n_images: 256
+n_images: 16
 image_shape: [101, 91]
 
 defaults:
   - model: unet
-  - override /trainer/logger: wandb
+  # - override /trainer/logger: wandb
   # - override /hydra/sweeper: orion
   # - override /resources: gpu
   # - override /cluster: 'current' # use `current` if you are already on a cluster, otherwise use one of the `cluster` configs.
