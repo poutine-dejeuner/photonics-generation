@@ -1,0 +1,14 @@
+# Simple UNet model configuration (works with arbitrary image sizes)
+_target_: models.simple_unet.SimpleUNet
+
+# Model architecture parameters
+input_channels: 1
+output_channels: 1
+base_channels: 64
+
+# Training parameters  
+n_epochs: 15
+seed: -1
+lr: 0.001
+train_set_size: -1  # -1 means use all available data
+batch_size: 8

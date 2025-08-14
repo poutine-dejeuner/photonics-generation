@@ -2,6 +2,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
 import numpy as np
 from einops import rearrange
 from typing import List
@@ -9,6 +10,14 @@ import random
 import math
 import pdb
 from torch import device
+from torch.utils.data import DataLoader, TensorDataset
+from tqdm import tqdm
+import hydra
+from timm.utils import ModelEmaV3
+
+from models.utils import DDPM_Scheduler, set_seed
+from unet_utils import UNetPad, display_reverse
+from nanophoto.meep_compute_fom import compute_FOM_parallele
 
 class ResBlock(nn.Module):
     def __init__(self, C: int, num_groups: int, dropout_prob: float):
@@ -127,6 +136,7 @@ class UNET(nn.Module):
             residuals.append(r)
         for i in range(self.num_layers//2, self.num_layers):
             layer = getattr(self, f'Layer{i+1}')
+            breakpoint()
             x = torch.concat((layer(x, embeddings)[0], residuals[self.num_layers-i-1]), dim=1)
         return self.output_conv(self.relu(self.late_conv(x)))
 
@@ -155,7 +165,14 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
     model = model.to(device)
     depth = model.num_layers//2
 
-    transform = UNetPad(data, depth=depth)
+    # Create a sample with the right shape for UNetPad initialization
+    if len(data.shape) == 3:  # (N, H, W)
+        sample_shape = (1, 1, data.shape[1], data.shape[2])  # (B, C, H, W)
+    else:  # (N, C, H, W)
+        sample_shape = (1, data.shape[1], data.shape[2], data.shape[3])  # (B, C, H, W)
+    
+    sample_tensor = torch.zeros(sample_shape)
+    transform = UNetPad(sample_tensor, depth=depth)
 
     train_dataset = TensorDataset(data)
     train_loader = DataLoader(
@@ -175,6 +192,9 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
         total_loss = 0
         for bidx, x in enumerate(train_loader):
             x = x[0]
+            # Fix dimensions: remove extra dimension if present
+            if len(x.shape) == 5:  # (B, 1, C, H, W) -> (B, C, H, W)
+                x = x.squeeze(1)
             x = x.cuda()
             t = torch.randint(0, num_time_steps, (batch_size,))
             e = torch.randn_like(x, requires_grad=False)
@@ -189,6 +209,8 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
             loss.backward()
             optimizer.step()
             ema.update(model)
+            if cfg.debug:
+                break  # Only run one batch in debug mode
         print(f'Epoch {i+1} | Loss {total_loss / len(train_loader):.5f}')
         if run is not None:
             run.log({"loss": total_loss})
@@ -199,6 +221,8 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
                 'ema': ema.state_dict()
             }
             torch.save(checkpoint, checkpoint_path)
+        if cfg.debug:
+            break  # Only run one epoch in debug mode
     # report_objective(loss.item(), 'loss')
     return total_loss
 

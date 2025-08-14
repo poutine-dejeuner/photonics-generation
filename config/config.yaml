@@ -1,5 +1,5 @@
 # general
-debug: False
+debug: True
 checkpoint_load_path: ~/repos/diffusion-model/checkpoint.pt
 data_path: ~/scratch/nanophoto/topoptim/fulloptim/images.npy
 guide_file: ~/repos/diffusion-model/guided_gen/guide.npy
@@ -8,50 +8,17 @@ inference_only: False
 
 logger: True
 
-# @package _global_
-
-# NOTE: If you get config 'orion' not found, run `uv add hydra-orion-sweeper`
-
-# This is an "experiment" config, that groups together other configs into a ready-to-run example.
-
 defaults:
   - _self_
   - model: unet
   - inference: unet
   - training: unet
-  # - example.yaml # A configuration for a single run (that works!)
-  # - override /trainer/logger: wandb
-  # - override /hydra/sweeper: orion
-  # - override /resources: gpu
-  # - override /cluster: 'current' # use `current` if you are already on a cluster, otherwise use one of the `cluster` configs.
 
 log_level: DEBUG
 name: "diff_hpo"
 
-# Set the seed to be the SLURM_PROCID, so that if we run more than one task per GPU, we get
-# TODO: This should technically be something like the "run_id", which would be different than SLURM_PROCID when using >1 gpus per "run".
 seed: ${oc.env:SLURM_PROCID,123}
 
 algorithm:
   optimizer:
-    # This here will get overwritten by the sweeper.
     lr: 0.002
-
-# trainer:
-#   accelerator: gpu
-#   devices: 1
-#   max_epochs: 1
-#   logger:
-#     wandb:
-#       project: "ResearchTemplate"
-#       # TODO: Use the Orion trial name?
-#       name: ${oc.env:SLURM_JOB_ID}_${oc.env:SLURM_ARRAY_TASK_ID,0}_${oc.env:SLURM_PROCID}
-#       save_dir: "${hydra:runtime.output_dir}"
-#       offline: False # set True to store all logs only locally
-#       id: ${oc.env:SLURM_JOB_ID}_${oc.env:SLURM_ARRAY_TASK_ID,0}_${oc.env:SLURM_PROCID} # pass correct id to resume experiment!
-#       # entity: ""  # set to name of your wandb team
-#       log_model: False
-#       prefix: ""
-#       job_type: "train"
-#       group: ${oc.env:SLURM_JOB_ID}
-#       # tags: ["${name}"]

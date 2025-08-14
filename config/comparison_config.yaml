@@ -1,0 +1,36 @@
+defaults:
+  - model: wgan
+  - train: wgan
+  - inference: wgan
+  - evaluation: debug  # Use 'debug' for testing, 'meep' for real physics evaluation
+  - _self_
+
+# Experiment configuration
+debug: True
+checkpoint_load_path: ~/repos/diffusion-model/checkpoint.pt
+data_path: ~/scratch/nanophoto/topoptim/fulloptim/images.npy
+guide_file: ~/repos/diffusion-model/guided_gen/guide.npy
+savepath: images
+inference_only: False
+logger: True
+train_set_size: 284 # number of samples to use in the training set
+n_to_generate: 1000 # number of samples to generate during inference
+
+# Data configuration
+data:
+  path: "~/scratch/nanophoto/topoptim/fulloptim/images.npy"
+  n_samples: ${train_set_size}
+
+# Output configuration
+output:
+  base_path: "~/scratch/nanophoto/comparison/experiments"
+
+log_level: DEBUG
+name: "model_comparison"
+
+seed: ${oc.env:SLURM_PROCID,123}
+
+experiment:
+  name: "generative_model_comparison"
+  description: "Comparing wGAN, VAE, and other models with diffusion models"
+  tags: ["comparison", "generative", "nanophotonics"]

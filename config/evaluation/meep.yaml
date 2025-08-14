@@ -1,0 +1,2 @@
+# Real physics evaluation using MEEP
+_target_: models.evaluation.meep_fom_evaluation
