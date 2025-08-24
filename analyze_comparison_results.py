@@ -146,7 +146,7 @@ def create_performance_report(results: Dict[str, Dict], save_path: str = None):
     sorted_models = sorted(results.keys(), 
                           key=lambda x: results[x]['fom_mean'], 
                           reverse=True)
-    
+
     report.append("RANKING BY MEAN FOM:")
     report.append("-" * 30)
     for i, model in enumerate(sorted_models, 1):

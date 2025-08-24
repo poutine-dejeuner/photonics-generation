@@ -114,7 +114,7 @@ class UNET(nn.Module):
         self.late_conv = nn.Conv2d(out_channels, out_channels//2, kernel_size=3, padding=1)
         self.output_conv = nn.Conv2d(out_channels//2, output_channels, kernel_size=1)
         self.relu = nn.ReLU(inplace=True)
-        self.embeddings = SinusoidalEmbeddings(time_steps=time_steps, embed_dim=max(Channels), device=device)
+        self.embeddings = SinusoidalEmbeddings(time_steps=time_steps, embed_dim=2*max(Channels), device=device)
         for i in range(self.num_layers):
             layer = UnetLayer(
                 upscale=Upscales[i],
@@ -136,12 +136,11 @@ class UNET(nn.Module):
             residuals.append(r)
         for i in range(self.num_layers//2, self.num_layers):
             layer = getattr(self, f'Layer{i+1}')
-            breakpoint()
             x = torch.concat((layer(x, embeddings)[0], residuals[self.num_layers-i-1]), dim=1)
         return self.output_conv(self.relu(self.late_conv(x)))
 
 
-def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
+def train(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir: os.PathLike,
           run=None):
     seed = -1
     n_epochs = cfg.n_epochs
@@ -161,7 +160,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.path, savedir: os.path,
 
     scheduler = DDPM_Scheduler(num_time_steps=num_time_steps)
 
-    model = hydra.utils.instantiate(cfg)
+    model = hydra.utils.instantiate(cfg.model)
     model = model.to(device)
     depth = model.num_layers//2
 
@@ -306,6 +305,10 @@ def main():
     #t = [random.randint(0, 999) for _ in range(16)]
     model = UNET().cuda()
     model(x,t)
+    n_params = 0
+    for p in model.parameters():
+        n_params += p.numel()
+    print(n_params)
 
     # a = torch.randn((16, 32, 4, 4))
     # b = torch.randn((16, 32, 4, 4))

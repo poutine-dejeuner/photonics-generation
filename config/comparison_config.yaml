@@ -1,20 +1,26 @@
 defaults:
-  - model: wgan
-  - train: wgan
-  - inference: wgan
+  - model: wgan  # Standard wgan config (automatically includes train and inference configs)
+  - train: wgan  # Explicitly include train config at top level
   - evaluation: debug  # Use 'debug' for testing, 'meep' for real physics evaluation
   - _self_
 
 # Experiment configuration
-debug: True
-checkpoint_load_path: ~/repos/diffusion-model/checkpoint.pt
+debug: False
+checkpoint_load_path: null  # Set to null to train from scratch, or provide valid WGAN checkpoint path
 data_path: ~/scratch/nanophoto/topoptim/fulloptim/images.npy
 guide_file: ~/repos/diffusion-model/guided_gen/guide.npy
 savepath: images
 inference_only: False
 logger: True
-train_set_size: 284 # number of samples to use in the training set
-n_to_generate: 1000 # number of samples to generate during inference
+train_set_size: 284
+n_to_generate: 1000
+n_compute_steps: 5_000_000
+n_model_parameters: 35_000_000
+
+# # Parameter count constraints
+# target_params: 35_000_000
+# param_tolerance: 0.15
+# auto_adjust_architecture: false
 
 # Data configuration
 data:

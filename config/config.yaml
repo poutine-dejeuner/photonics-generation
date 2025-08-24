@@ -5,6 +5,7 @@ data_path: ~/scratch/nanophoto/topoptim/fulloptim/images.npy
 guide_file: ~/repos/diffusion-model/guided_gen/guide.npy
 savepath: images
 inference_only: False
+n_model_parameters: 35_000_000
 
 logger: True
 

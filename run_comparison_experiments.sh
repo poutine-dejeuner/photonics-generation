@@ -68,7 +68,7 @@ cd /home/mila/l/letournv/repos/diffusion-model
 echo "Starting experiment with model: \$model"
 
 # Build the command
-CMD="python train_comparison.py --config-name=comparison_config model=\$model train=\$model inference=\$model logger=True"
+CMD="python train_comparison.py --config-name=comparison_config model=\$model train=\$model logger=True"
 
 # Add debug flag if passed
 if [[ "${debug_flag}" != "" ]]; then

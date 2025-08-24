@@ -80,7 +80,6 @@ class SimpleUNet(nn.Module):
 def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
     """Training function for Simple UNet."""
     
-    # Training parameters
     n_epochs = cfg.n_epochs
     batch_size = cfg.batch_size
     lr = cfg.lr
@@ -90,36 +89,30 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
     print(f"Training Simple UNet on {device}")
     print(f"{n_epochs} epochs total")
     
-    # Set seed
-    set_seed(random.randint(0, 2**32-1)) if seed == -1 else set_seed(seed)
+    set_seed(seed)
     
     # Prepare data
     data = torch.tensor(data, dtype=torch.float32)
     if len(data.shape) == 3:  # Add channel dimension if missing
         data = data.unsqueeze(1)
-    
-    # Normalize data to [0, 1] if needed
     if data.max() > 1.0:
         data = (data - data.min()) / (data.max() - data.min())
     
     img_channels = data.shape[1]
     
-    # Initialize model
     model = SimpleUNet(input_channels=img_channels, output_channels=img_channels).to(device)
     
-    # Optimizer and loss
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
     
-    # Data loader
     dataset = TensorDataset(data)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, 
                            drop_last=True, num_workers=1)
     
-    # Load checkpoint if exists
     start_epoch = 0
     if checkpoint_path and os.path.exists(checkpoint_path):
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        checkpoint = torch.load(checkpoint_path, map_location=device,
+                weights_only=False)
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         start_epoch = checkpoint['epoch'] + 1
@@ -203,7 +196,8 @@ def inference(checkpoint_path: str, savepath: str, cfg):
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
     
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device,
+            weights_only=False)
     model_cfg = checkpoint['config']
     
     # Initialize model (we'll need to infer the architecture from checkpoint)
