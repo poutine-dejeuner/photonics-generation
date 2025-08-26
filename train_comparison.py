@@ -3,96 +3,23 @@ Training script for comparing different generative models (wGAN, VAE, etc.) with
 This script follows the same hydra configuration structure as train4.py for consistency.
 """
 import os
-import json
 import datetime
 
 import numpy as np
 from einops import rearrange
 from torch.utils.data import DataLoader, TensorDataset
-import matplotlib.pyplot as plt
 import hydra
 from omegaconf import OmegaConf
 
+from evaluation import evaluation
+
 from nanophoto.utils import make_wandb_run
-from nanophoto.evaluation.evalgen import eval_metrics
 
 from icecream import ic, install
 
 ic.configureOutput(includeContext=True)
 install()
 OmegaConf.register_new_resolver("eval", eval)
-
-
-def visualize_generated_samples(images: np.ndarray, savepath: str, model_name: str, n_samples: int = 16):
-    """
-    Create a grid visualization of generated samples and save it.
-    
-    Args:
-        images: Generated images array of shape (N, C, H, W) or (N, H, W)
-        savepath: Directory to save the visualization
-        model_name: Name of the model for the title
-        n_samples: Number of samples to display in grid (default 16)
-    """
-    # Ensure we don't exceed available samples
-    n_samples = min(n_samples, images.shape[0])
-    
-    # Calculate grid dimensions (prefer square grids)
-    grid_size = int(np.ceil(np.sqrt(n_samples)))
-    
-    # Create figure
-    fig, axes = plt.subplots(grid_size, grid_size, figsize=(12, 12))
-    fig.suptitle(f'{model_name} - Generated Samples', fontsize=16, fontweight='bold')
-    
-    # Handle case where we have only one subplot
-    if grid_size == 1:
-        axes = [[axes]]
-    elif grid_size == 2:
-        axes = axes.reshape(2, 2)
-    
-    sample_idx = 0
-    for i in range(grid_size):
-        for j in range(grid_size):
-            ax = axes[i][j] if grid_size > 1 else axes[i]
-            
-            if sample_idx < n_samples:
-                # Get the image
-                img = images[sample_idx]
-                
-                # Handle different image formats
-                if len(img.shape) == 3:  # (C, H, W)
-                    if img.shape[0] == 1:  # Single channel
-                        img = img.squeeze(0)
-                    else:  # Multi-channel, transpose to (H, W, C)
-                        img = img.transpose(1, 2, 0)
-                elif len(img.shape) == 2:  # (H, W)
-                    pass  # Already in correct format
-                
-                # Normalize to [0, 1] for display
-                img_display = (img - img.min()) / (img.max() - img.min() + 1e-8)
-                
-                # Display image
-                if len(img_display.shape) == 2:  # Grayscale
-                    ax.imshow(img_display, cmap='gray', vmin=0, vmax=1)
-                else:  # Color
-                    ax.imshow(np.clip(img_display, 0, 1))
-                
-                ax.set_title(f'Sample {sample_idx + 1}', fontsize=10)
-                sample_idx += 1
-            else:
-                # Hide empty subplots
-                ax.set_visible(False)
-            
-            ax.axis('off')
-    
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.93)  # Make room for suptitle
-    
-    # Save the visualization
-    save_file = os.path.join(savepath, f"{model_name.lower()}_samples_grid.png")
-    plt.savefig(save_file, dpi=300, bbox_inches='tight', facecolor='white')
-    plt.close()
-    
-    print(f"Sample grid visualization saved: {save_file}")
 
 
 @hydra.main(config_path="config", config_name="comparison_config")
@@ -109,7 +36,7 @@ def main(cfg):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         savedir = os.path.join(savedir, f"{jobid}_{timestamp}")
     
-    model_name = cfg.model.get('_target_', 'unknown').split('.')[-1]
+    model_name = cfg.model.get('name', cfg.model.get('_target_', 'unknown').split('.')[-1])
     savedir = os.path.join(savedir, model_name)
     
     if cfg.inference_only:
@@ -219,36 +146,15 @@ def main(cfg):
         train_fn(data=data, checkpoint_path=checkpoint_path,
                  savedir=savedir, run=run, cfg=cfg)
 
-    images, fom = inference_fn(checkpoint_path=checkpoint_path, 
+    images = inference_fn(checkpoint_path=checkpoint_path, 
                               savepath=images_savepath, cfg=cfg)
     
-    visualize_generated_samples(images, images_savepath, model_name, n_samples=16)
+    results = evaluation(images, savedir, model_name, cfg)
+
+    run.log(results)
+    ic(results)
     
-    plt.figure(figsize=(10, 6))
-    plt.hist(fom, bins=100, alpha=0.7, edgecolor='black')
-    plt.title(f"FOM Histogram - {model_name}")
-    plt.xlabel("Figure of Merit")
-    plt.ylabel("Frequency")
-    plt.grid(True, alpha=0.3)
-    plt.savefig(os.path.join(savedir, "fom_histogram.png"), dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    dataset_cfg = OmegaConf.create([{"name": f"{model_name}_{os.environ.get('SLURM_JOB_ID', 'local')}",
-                                   "path": images_savepath}])
-    eval_metrics(dataset_cfg, os.path.dirname(datapath))
-    
-    results = {
-        'model_type': cfg.model.get('_target_', 'unknown'),
-        'train_set_size': cfg.train_set_size,
-        'debug': cfg.debug,
-        'experiment_path': savedir,
-        'config': OmegaConf.to_container(cfg, resolve=True)
-    }
-    
-    with open(os.path.join(savedir, 'experiment_results.json'), 'w') as f:
-        json.dump(results, f, indent=2)
-    
-    return fom.mean()
+    return 
 
 if __name__ == '__main__':
     main()

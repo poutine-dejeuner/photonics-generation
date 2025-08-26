@@ -384,10 +384,5 @@ def inference(checkpoint_path: str, savepath: str, cfg):
     generated_images = np.concatenate(generated_images, axis=0)
 
     np.save(os.path.join(savepath, "images.npy"), generated_images)
-
-    eval_fn = get_evaluation_function(cfg)
-    fom = eval_fn(generated_images)
-
-    np.save(os.path.join(savepath, "fom.npy"), fom)
     
-    return generated_images, fom
+    return generated_images

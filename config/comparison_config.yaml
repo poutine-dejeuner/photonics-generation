@@ -1,8 +1,8 @@
 defaults:
-  - model: wgan  # Standard wgan config (automatically includes train and inference configs)
-  - train: wgan  # Explicitly include train config at top level
-  - evaluation: debug  # Use 'debug' for testing, 'meep' for real physics evaluation
   - _self_
+  - model: wgan
+  - train: wgan
+  - evaluation: config
 
 # Experiment configuration
 debug: False
@@ -16,11 +16,6 @@ train_set_size: 284
 n_to_generate: 1000
 n_compute_steps: 5_000_000
 n_model_parameters: 35_000_000
-
-# # Parameter count constraints
-# target_params: 35_000_000
-# param_tolerance: 0.15
-# auto_adjust_architecture: false
 
 # Data configuration
 data:

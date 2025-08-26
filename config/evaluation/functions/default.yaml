@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+  - visualize_samples
+  - plot_fom_hist
+  - compute_entropy
+  - nn_distance
+  - eval_static
+
+# Override defaults if needed
+# To use only specific functions, override in your main config with:
+# evaluation:
+#   functions:
+#     - visualize_samples
+#     - plot_fom_hist

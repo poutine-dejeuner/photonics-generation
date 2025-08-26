@@ -1,0 +1,6 @@
+# @package _global_
+defaults:
+  - _self_
+
+_target_: evaluation.visualize_generated_samples
+n_samples: 16

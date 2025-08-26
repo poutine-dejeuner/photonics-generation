@@ -1,0 +1,16 @@
+# Example of how to override evaluation functions in your main config
+# Add this to your train/inference config file:
+
+evaluation:
+  functions:
+    - _target_: evaluation.visualize_generated_samples
+      n_samples: 25  # Custom number of samples
+    - _target_: evaluation.plot_fom_hist
+    - _target_: nanophoto.evaluation.gen_models_comparison.compute_entropy
+      approach: "metric"
+
+# Or use one of the predefined function sets:
+# evaluation:
+#   functions: basic      # Only visualization
+#   functions: metrics_only  # Only compute_entropy and nn_distance
+#   functions: complete   # All functions (default)

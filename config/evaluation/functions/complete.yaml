@@ -1,0 +1,9 @@
+# @package _global_
+functions:
+  - _target_: evaluation.inception_score
+  - _target_: evaluation.visualize_generated_samples
+    n_samples: 16
+  - _target_: evaluation.plot_fom_hist
+  - _target_: nanophoto.evaluation.gen_models_comparison.compute_entropy
+    approach: "metric"
+  - _target_: nanophoto.evaluation.gen_models_comparison.nn_distance_to_train_ds

@@ -14,6 +14,7 @@ defaults:
   - model: unet
   - inference: unet
   - training: unet
+  - evaluation: config
 
 log_level: DEBUG
 name: "diff_hpo"

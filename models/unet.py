@@ -286,17 +286,7 @@ def inference(cfg,
     samples = (samples - samples.min()) / (samples.max() - samples.min())
     np.save(os.path.join(savepath, "images.npy"), samples)
 
-    if meep_eval:
-        if cfg.debug is False:
-            fom_fn = compute_FOM_parallele 
-        else:
-            fom_fn = lambda x: np.random.rand(x.shape[0])
-        fom = fom_fn(samples)
-        np.save(os.path.join(savepath, "fom.npy"), fom)
-    else:
-        fom = np.empty((0,))
-
-    return samples, fom
+    return samples
 
 
 def main():
@@ -309,11 +299,6 @@ def main():
     for p in model.parameters():
         n_params += p.numel()
     print(n_params)
-
-    # a = torch.randn((16, 32, 4, 4))
-    # b = torch.randn((16, 32, 4, 4))
-    # print(torch.concat((a,b), dim=1).shape)
-
 
 if __name__ == '__main__':
     main()

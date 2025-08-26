@@ -2,6 +2,8 @@
 defaults:
   - /inference: wgan
 
+name: wgaN
+
 _target_: models.wgan.WGAN
 
 # Model architecture parameters

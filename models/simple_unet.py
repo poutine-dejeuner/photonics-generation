@@ -237,11 +237,4 @@ def inference(checkpoint_path: str, savepath: str, cfg):
     # Save images
     np.save(os.path.join(savepath, "images.npy"), generated_images)
     
-    # Compute FOM using configurable evaluation function
-    eval_fn = get_evaluation_function(cfg)
-    fom = eval_fn(generated_images)
-    
-    # Save FOM
-    np.save(os.path.join(savepath, "fom.npy"), fom)
-    
-    return generated_images, fom
+    return generated_images
