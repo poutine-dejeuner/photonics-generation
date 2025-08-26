@@ -1,7 +1,7 @@
 defaults:
   - _self_
-  - fom: meep
-  - override fom: debug?debug=true
+  # - fom: meep
+  # - override fom: debug?debug=true
   - functions: complete
 
-functions: []  # This will be populated by the functions configs 
+# functions: []  # This will be populated by the functions configs 

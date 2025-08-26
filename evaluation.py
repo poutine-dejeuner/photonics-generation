@@ -84,8 +84,6 @@ def visualize_generated_samples(images: np.ndarray, savepath: str, model_name: s
     print(f"Sample grid visualization saved: {save_file}")
 
 
-
-
 def plot_fom_hist(fom, model_name, savedir):
     plt.figure(figsize=(10, 6))
     plt.hist(fom, bins=100, alpha=0.7, edgecolor='black')
@@ -121,21 +119,33 @@ def eval_static(images, fom, savedir, model_name, cfg):
         json.dump(results, f, indent=2)
 
 
+def compute_fom(images, savepath, model_name, cfg):
+    from nanophoto.meep_compute_fom import compute_FOM_parallele
+
+    if cfg.debug:
+        fom = np.random.rand(images.shape[0])
+    else:
+        fom = compute_FOM_parallele(images)
+
+    np.save(os.path.join(savepath, "fom.npy"), fom)
+    return fom.mean(), fom.std()
+
+
 def evaluation(images, fom, model_name, cfg):
     savepath = cfg.savepath
-    
+
     results = dict()
-    ic(cfg.evaluation.functions)
-    for eval_fn_cfg in cfg.evaluation.functions:
+    ic(cfg.evaluation)
+    for eval_fn_cfg in cfg.evaluation:
         eval_fn = hydra.utils.instantiate(eval_fn_cfg)
         try:
             if hasattr(eval_fn, '__name__'):
                 fn_name = eval_fn.__name__
             else:
                 fn_name = str(eval_fn_cfg.get('_target_', 'unknown'))
-            
+
             print(f"Running evaluation function: {fn_name}")
-            
+
             # Handle different function signatures
             if 'eval_static' in fn_name:
                 out = eval_fn(images, fom, savepath, model_name, cfg)
@@ -145,14 +155,15 @@ def evaluation(images, fom, model_name, cfg):
             else:
                 # Default signature for visualization functions
                 out = eval_fn(images, fom, savepath, model_name)
-            
-            results[fn_name]=out
-            
+
+            results[fn_name] = out
+
         except Exception as e:
-            print(f"Error running evaluation function {eval_fn_cfg.get('_target_', 'unknown')}: {e}")
-    
+            print(
+                f"Error running evaluation function {eval_fn_cfg.get('_target_', 'unknown')}: {e}")
+
     return results
-        
+
 
 def test_evaluation():
     """
@@ -160,12 +171,12 @@ def test_evaluation():
     """
     from omegaconf import OmegaConf
     import tempfile
-    
+
     # Create mock data
     images = np.random.rand(8, 1, 64, 64)  # (N, C, H, W) format
     fom = np.random.rand(8)
     model_name = "test_model"
-    
+
     # Create temporary directory for saving
     with tempfile.TemporaryDirectory() as temp_dir:
         # Create a test configuration with evaluation functions
@@ -178,22 +189,24 @@ def test_evaluation():
             'evaluation': {
                 'functions': [
                     {'_target_': 'evaluation.visualize_generated_samples',
-                    n_samples: 16},
+                     'n_samples': 16},
                     {'_target_': 'nanophoto.evaluation.gen_models_comparison.compute_entropy'},
                     {'_target_': 'evaluation.plot_fom_hist'},
                     {'_target_': 'nanophoto.evaluation.gen_models_comparison.nn_distance_to_train_ds'}
                 ]
             }
         })
-        
+
         print("Config evaluation functions:")
         print(cfg.evaluation.functions)
-        print(f"Number of evaluation functions: {len(cfg.evaluation.functions)}")
-        
+        print(
+            f"Number of evaluation functions: {len(cfg.evaluation.functions)}")
+
         # Test the evaluation function
         try:
             results = evaluation(images, fom, model_name, cfg)
-            print(f"Evaluation completed successfully. Results keys: {list(results.keys())}")
+            print(
+                f"Evaluation completed successfully. Results keys: {list(results.keys())}")
             return results
         except Exception as e:
             print(f"Error during evaluation: {e}")
@@ -209,12 +222,12 @@ if __name__ == "__main__":
 # def inception_score(images, batch_size=32, splits=10):
 #     """
 #     Compute Inception Score (IS) for generated images.
-    
+
 #     Args:
 #         images: Generated images array of shape (N, C, H, W) or (N, H, W)
 #         batch_size: Batch size for processing (default 32)
 #         splits: Number of splits for computing IS (default 10)
-    
+
 #     Returns:
 #         tuple: (mean_IS, std_IS)
 #     """
@@ -223,39 +236,39 @@ if __name__ == "__main__":
 #     import torch.nn.functional as F
 #     from torchvision.models import inception_v3
 #     from torch.utils.data import DataLoader, TensorDataset
-    
+
 #     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
+
 #     # Load pre-trained Inception v3 model
 #     inception_model = inception_v3(pretrained=True, transform_input=False).to(device)
 #     inception_model.eval()
-    
+
 #     # Convert numpy array to torch tensor
 #     if isinstance(images, np.ndarray):
 #         images_tensor = torch.from_numpy(images).float()
 #     else:
 #         images_tensor = images
-    
+
 #     # Handle different image formats
 #     if len(images_tensor.shape) == 3:  # (N, H, W) -> (N, 1, H, W)
 #         images_tensor = images_tensor.unsqueeze(1)
-    
+
 #     # Ensure we have 3 channels for Inception (RGB)
 #     if images_tensor.shape[1] == 1:  # Grayscale -> RGB
 #         images_tensor = images_tensor.repeat(1, 3, 1, 1)
-    
+
 #     # Resize to 299x299 (Inception input size)
 #     if images_tensor.shape[-1] != 299 or images_tensor.shape[-2] != 299:
 #         images_tensor = F.interpolate(images_tensor, size=(299, 299), mode='bilinear', align_corners=False)
-    
+
 #     # Normalize to [-1, 1] range expected by Inception
 #     images_tensor = (images_tensor - images_tensor.min()) / (images_tensor.max() - images_tensor.min())
 #     images_tensor = images_tensor * 2.0 - 1.0
-    
+
 #     # Create DataLoader
 #     dataset = TensorDataset(images_tensor)
 #     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-    
+
 #     # Get predictions
 #     all_preds = []
 #     with torch.no_grad():
@@ -264,30 +277,28 @@ if __name__ == "__main__":
 #             preds = inception_model(batch_images)
 #             preds = F.softmax(preds, dim=1)
 #             all_preds.append(preds.cpu())
-    
+
 #     all_preds = torch.cat(all_preds, dim=0)
-    
+
 #     # Compute IS
 #     scores = []
 #     n_samples = all_preds.shape[0]
 #     split_size = n_samples // splits
-    
+
 #     for i in range(splits):
 #         start_idx = i * split_size
 #         end_idx = (i + 1) * split_size if i < splits - 1 else n_samples
-        
+
 #         split_preds = all_preds[start_idx:end_idx]
-        
+
 #         # Compute KL divergence
 #         marginal = torch.mean(split_preds, dim=0, keepdim=True)
 #         kl_div = split_preds * (torch.log(split_preds + 1e-8) - torch.log(marginal + 1e-8))
 #         kl_div = torch.sum(kl_div, dim=1)
 #         is_score = torch.exp(torch.mean(kl_div))
 #         scores.append(is_score.item())
-    
+
 #     mean_is = np.mean(scores)
 #     std_is = np.std(scores)
-    
+
 #     return mean_is, std_is
-
-

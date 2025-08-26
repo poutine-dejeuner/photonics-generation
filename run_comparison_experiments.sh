@@ -26,9 +26,7 @@ fi
 
 sbatch << EOF
 #!/bin/bash
-#SBATCH --partition=main
 #SBATCH --gres=gpu:1
-#SBATCH --constraint="32gb|40gb|48gb"
 #SBATCH -c 4
 #SBATCH --mem=32G
 #SBATCH -t 24:00:00
