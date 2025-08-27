@@ -2,7 +2,7 @@ defaults:
   - _self_
   - model: wgan
   - train: wgan
-  - evaluation: config
+  - evaluation: complete
 
 # Experiment configuration
 debug: False

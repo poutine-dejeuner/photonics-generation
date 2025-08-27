@@ -13,7 +13,7 @@ defaults:
   - _self_
   - model: unet
   - inference: unet
-  - training: unet
+  - train: unet
   - evaluation: complete
   # - evaluation: config
 
