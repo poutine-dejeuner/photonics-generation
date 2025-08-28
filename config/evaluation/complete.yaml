@@ -1,8 +1,7 @@
-- _target_: evaluation.compute_fom
-- _target_: evaluation.inception_score
-- _target_: evaluation.visualize_generated_samples
+- _target_: evaluation.ComputeFom
+- _target_: evaluation.VisualizeGeneratedSamples
   n_samples: 16
-- _target_: evaluation.plot_fom_hist
-- _target_: nanophoto.evaluation.gen_models_comparison.compute_entropy
+- _target_: evaluation.PlotFomHistogram
+- _target_: evaluation.ComputeEntropy
   approach: "metric"
-- _target_: nanophoto.evaluation.gen_models_comparison.nn_distance_to_train_ds
+- _target_: evaluation.NNDistanceTrainSet
