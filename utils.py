@@ -12,6 +12,14 @@ import matplotlib.pyplot as plt
 from einops import rearrange
 
 
+def find_file(root_dir, name):
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        if name in filenames:
+            filepath = os.path.join(dirpath, name)
+            return filepath
+    return None
+
+
 def select_diverse_images(images: Union[np.ndarray, torch.Tensor], 
                          M: int, 
                          distance_metric: str = 'euclidean') -> Tuple[np.ndarray, List[int]]:

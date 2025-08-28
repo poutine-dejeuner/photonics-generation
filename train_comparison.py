@@ -150,7 +150,7 @@ def main(cfg):
     images = inference_fn(checkpoint_path=checkpoint_path, 
                               savepath=images_savepath, cfg=cfg)
 
-    results = evaluation(images, savedir, model_name, cfg)
+    results = evaluation(images, cfg)
 
     if cfg.logger:
         run.log(results)

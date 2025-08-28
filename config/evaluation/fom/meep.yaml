@@ -1,1 +1,1 @@
-_target_: models.evaluation.meep_fom_evaluation
+_target_: evaluation.ComputeFom

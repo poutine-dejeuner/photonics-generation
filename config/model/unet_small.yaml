@@ -1,3 +1,4 @@
+name: unet_small
 defaults:
   - /inference: unet_small
 

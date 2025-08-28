@@ -1,8 +1,7 @@
 # WGAN model configuration
+name: wgan
 defaults:
   - /inference: wgan
-
-name: wgaN
 
 _target_: models.wgan.WGAN
 

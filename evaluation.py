@@ -19,8 +19,8 @@ class EvaluationFunction(ABC):
         self.config = kwargs
 
     @abstractmethod
-    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None, 
-                 savepath: Optional[str] = None, model_name: Optional[str] = None, 
+    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None,
+                 savepath: Optional[str] = None, model_name: Optional[str] = None,
                  cfg: Optional[OmegaConf] = None) -> Any:
         """
         Execute the evaluation function.
@@ -50,8 +50,8 @@ class VisualizeGeneratedSamples(EvaluationFunction):
         super().__init__(**kwargs)
         self.n_samples = n_samples
 
-    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None, 
-                 savepath: Optional[str] = None, model_name: Optional[str] = None, 
+    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None,
+                 savepath: Optional[str] = None, model_name: Optional[str] = None,
                  cfg: Optional[OmegaConf] = None) -> str:
         """
         Create a grid visualization of generated samples and save it.
@@ -109,7 +109,8 @@ class VisualizeGeneratedSamples(EvaluationFunction):
                         pass  # Already in correct format
 
                     # Normalize to [0, 1] for display
-                    img_display = (img - img.min()) / (img.max() - img.min() + 1e-8)
+                    img_display = (img - img.min()) / \
+                        (img.max() - img.min() + 1e-8)
 
                     # Display image
                     if len(img_display.shape) == 2:  # Grayscale
@@ -129,7 +130,8 @@ class VisualizeGeneratedSamples(EvaluationFunction):
         plt.subplots_adjust(top=0.93)  # Make room for suptitle
 
         # Save the visualization
-        save_file = os.path.join(savepath, f"{model_name.lower()}_samples_grid.png")
+        save_file = os.path.join(
+            savepath, f"{model_name.lower()}_samples_grid.png")
         plt.savefig(save_file, dpi=300, bbox_inches='tight', facecolor='white')
         plt.close()
 
@@ -140,8 +142,8 @@ class VisualizeGeneratedSamples(EvaluationFunction):
 class PlotFomHistogram(EvaluationFunction):
     """Plot histogram of Figure of Merit values."""
 
-    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None, 
-                 savepath: Optional[str] = None, model_name: Optional[str] = None, 
+    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None,
+                 savepath: Optional[str] = None, model_name: Optional[str] = None,
                  cfg: Optional[OmegaConf] = None) -> str:
         """Plot FOM histogram and save it."""
         if fom is None or savepath is None or model_name is None:
@@ -164,8 +166,8 @@ class PlotFomHistogram(EvaluationFunction):
 class ComputeFom(EvaluationFunction):
     """Compute Figure of Merit for generated images."""
 
-    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None, 
-                 savepath: Optional[str] = None, model_name: Optional[str] = None, 
+    def __call__(self, images: np.ndarray,
+                 savepath: Optional[str] = None, model_name: Optional[str] = None,
                  cfg: Optional[OmegaConf] = None) -> tuple[float, float]:
 
         from nanophoto.meep_compute_fom import compute_FOM_parallele
@@ -178,13 +180,14 @@ class ComputeFom(EvaluationFunction):
         np.save(os.path.join(savepath, "fom.npy"), computed_fom)
         return computed_fom.mean(), computed_fom.std()
 
+
 class ComputeEntropy(EvaluationFunction):
-    def __init__(self, n_neighbors: int=4, **kwargs):
+    def __init__(self, n_neighbors: int = 4, **kwargs):
 
         self.n_neighbors = n_neighbors
 
-    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None, 
-                 savepath: Optional[str] = None, model_name: Optional[str] = None, 
+    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None,
+                 savepath: Optional[str] = None, model_name: Optional[str] = None,
                  cfg: Optional[OmegaConf] = None) -> tuple[float, float]:
 
         from infomeasure import entropy
@@ -193,8 +196,9 @@ class ComputeEntropy(EvaluationFunction):
         h = entropy(images, approach="metric", k=self.n_neighbors)
         return h
 
+
 class NNDistanceTrainSet(EvaluationFunction):
-    def __init__(self, train_set_path:os.PathLike, **kwargs):
+    def __init__(self, train_set_path: os.PathLike, **kwargs):
         train_set_path = os.path.expanduser(train_set_path)
         self.train_set = np.load(train_set_path)
 
@@ -226,13 +230,13 @@ def compute_fom(images: np.ndarray, savepath: str, model_name: str, cfg: OmegaCo
     return evaluator(images, savepath=savepath, model_name=model_name, cfg=cfg)
 
 
-def evaluation(images: np.ndarray, fom: np.ndarray, model_name: str, cfg: OmegaConf) -> Dict[str, Any]:
+# @hydra.main(config_path="config", config_name="comparison_config")
+def evaluation(images: np.ndarray, cfg: OmegaConf) -> Dict[str, Any]:
     """
     Main evaluation function that runs all configured evaluation functions.
 
     Args:
         images: Generated images array
-        fom: Figure of merit values
         model_name: Name of the model
         cfg: Configuration object
 
@@ -241,9 +245,15 @@ def evaluation(images: np.ndarray, fom: np.ndarray, model_name: str, cfg: OmegaC
     """
     savepath = cfg.savepath
     os.makedirs(savepath, exist_ok=True)
+    model_name = cfg.model.name
+
     results = dict()
 
-    for eval_fn_cfg in cfg.evaluation:
+    # calcul FOM
+    eval_fom = hydra.utils.instantiate(cfg.evaluation.fom)
+    fom = eval_fom(images, savepath, model_name, cfg)
+
+    for eval_fn_cfg in cfg.evaluation.functions:
         eval_fn = hydra.utils.instantiate(eval_fn_cfg)
 
         if hasattr(eval_fn, '__name__'):
@@ -259,45 +269,76 @@ def evaluation(images: np.ndarray, fom: np.ndarray, model_name: str, cfg: OmegaC
     return results
 
 
-def test_evaluation():
-    """
-    Test function to debug evaluation with properly initiated variables.
-    """
-    from omegaconf import OmegaConf
-    import tempfile
-
-    # Create mock data
-    images = np.random.rand(8, 1, 101, 91)  # (N, C, H, W) format
-    fom = np.random.rand(8)
-    model_name = "test_model"
-
-    # Create temporary directory for saving
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Create a test configuration with evaluation functions
-        cfg = OmegaConf.create({
-            'debug': True,
-            'savepath': temp_dir,
-            'model': {'_target_': 'test.model'},
-            'train_set_size': 1000,
-            'data_path': '/tmp/test_data',
-            'evaluation': [
-                {'_target_': 'evaluation.VisualizeGeneratedSamples', 'n_samples': 16},
-                {'_target_': 'evaluation.PlotFomHistogram'},
-                {'_target_': 'evaluation.ComputeFom'},
-                {'_target_': 'evaluation.ComputeEntropy'},
-                {'_target_': 'evaluation.NNDistanceTrainSet',
-                'train_set_path': "~/scratch/nanophoto/topoptim/fulloptim/images.npy" },
-            ]
-        })
-
-        # Test the evaluation function
-        results = evaluation(images, fom, model_name, cfg)
-
-        for key, val in results.items():
-            print()
-            print(key)
-            print(val)
-
-
 if __name__ == "__main__":
-    test_evaluation()
+    import sys
+
+    from hydra import initialize, compose
+
+    from nanophoto.evaluation.gen_models_comparison import (find_file,
+                                                            get_model_name_from_config)
+
+    if len(sys.argv)>1:
+        path = sys.argv[1]
+    else:
+        path = '.'
+
+    config_path = find_file(path, "config.yaml")
+    if config_path:
+        print(f"Found config file at {config_path}")
+        config_dir = os.path.dirname(config_path)
+    else:
+        config_dir = os.path.dirname(__file__)
+        config_dir = os.path.join(config_dir, "config")
+
+    with initialize(config_path=config_dir):
+        cfg = compose(config_name="comparison_config.yaml")
+
+    images_path = find_file(path, "images.npy")
+    if not images_path:
+        images_path = """/network/scratch/l/letournv/nanophoto/comparison/selected/SimpleUNet/images/images.npy"""
+    images = np.load(images_path)
+    
+    evaluation(images, cfg)
+
+
+    # test_evaluation()
+
+
+# def test_evaluation():
+#     """
+#     Test function to debug evaluation with properly initiated variables.
+#     """
+#     from omegaconf import OmegaConf
+#     import tempfile
+
+#     # Create mock data
+#     images = np.random.rand(8, 1, 101, 91)  # (N, C, H, W) format
+#     fom = np.random.rand(8)
+#     model_name = "test_model"
+
+#     # Create temporary directory for saving
+#     with tempfile.TemporaryDirectory() as temp_dir:
+#         # Create a test configuration with evaluation functions
+#         cfg = OmegaConf.create({
+#             'debug': True,
+#             'savepath': temp_dir,
+#             'model': {'_target_': 'test.model'},
+#             'train_set_size': 1000,
+#             'data_path': '/tmp/test_data',
+#             'evaluation': [
+#                 {'_target_': 'evaluation.VisualizeGeneratedSamples', 'n_samples': 16},
+#                 {'_target_': 'evaluation.PlotFomHistogram'},
+#                 {'_target_': 'evaluation.ComputeFom'},
+#                 {'_target_': 'evaluation.ComputeEntropy'},
+#                 {'_target_': 'evaluation.NNDistanceTrainSet',
+#                  'train_set_path': "~/scratch/nanophoto/topoptim/fulloptim/images.npy"},
+#             ]
+#         })
+
+#         # Test the evaluation function
+#         results = evaluation(images, fom, model_name, cfg)
+
+#         for key, val in results.items():
+#             print()
+#             print(key)
+#             print(val)

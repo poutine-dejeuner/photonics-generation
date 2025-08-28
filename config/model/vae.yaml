@@ -1,4 +1,5 @@
 # VAE model configuration
+name: vae
 defaults:
   - /train: vae
   - /inference: vae

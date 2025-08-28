@@ -1,4 +1,5 @@
 # Standard GAN model configuration
+name: standard_gan
 defaults:
   - /train: standard_gan
   - /inference: standard_gan
