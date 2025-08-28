@@ -31,6 +31,7 @@ def main(cfg):
 
     if cfg.debug:
         savedir = os.path.join(savedir, 'debug')
+        cfg.n_to_generate = 16
     else:
         jobid = os.environ.get("SLURM_JOB_ID", "local_run")
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")

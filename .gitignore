@@ -11,4 +11,5 @@ checkpoint.pt
 *.png
 */checkpoint.pt
 test.py
+*.out
 

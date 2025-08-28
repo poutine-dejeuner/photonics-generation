@@ -13,30 +13,30 @@ from icecream import ic
 
 class EvaluationFunction(ABC):
     """Abstract base class for all evaluation functions."""
-    
+
     def __init__(self, **kwargs):
         """Initialize the evaluation function with any configuration parameters."""
         self.config = kwargs
-    
+
     @abstractmethod
     def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None, 
                  savepath: Optional[str] = None, model_name: Optional[str] = None, 
                  cfg: Optional[OmegaConf] = None) -> Any:
         """
         Execute the evaluation function.
-        
+
         Args:
             images: Generated images array
             fom: Figure of merit values (optional)
             savepath: Directory to save results (optional)
             model_name: Name of the model (optional)
             cfg: Configuration object (optional)
-            
+
         Returns:
             Evaluation results (type depends on specific function)
         """
         pass
-    
+
     @property
     def name(self) -> str:
         """Return the name of this evaluation function."""
@@ -45,11 +45,11 @@ class EvaluationFunction(ABC):
 
 class VisualizeGeneratedSamples(EvaluationFunction):
     """Create a grid visualization of generated samples and save it."""
-    
+
     def __init__(self, n_samples: int = 16, **kwargs):
         super().__init__(**kwargs)
         self.n_samples = n_samples
-    
+
     def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None, 
                  savepath: Optional[str] = None, model_name: Optional[str] = None, 
                  cfg: Optional[OmegaConf] = None) -> str:
@@ -67,7 +67,7 @@ class VisualizeGeneratedSamples(EvaluationFunction):
         """
         if savepath is None or model_name is None:
             raise ValueError("savepath and model_name are required")
-            
+
         # Ensure we don't exceed available samples
         n_samples = min(self.n_samples, images.shape[0])
 
@@ -163,21 +163,21 @@ class PlotFomHistogram(EvaluationFunction):
 
 class ComputeFom(EvaluationFunction):
     """Compute Figure of Merit for generated images."""
-    
+
     def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None, 
                  savepath: Optional[str] = None, model_name: Optional[str] = None, 
                  cfg: Optional[OmegaConf] = None) -> tuple[float, float]:
 
         from nanophoto.meep_compute_fom import compute_FOM_parallele
 
-        if cfg.debug:
+        if cfg.debug and not cfg.meep:
             computed_fom = np.random.rand(images.shape[0])
         else:
             computed_fom = compute_FOM_parallele(images)
 
         np.save(os.path.join(savepath, "fom.npy"), computed_fom)
         return computed_fom.mean(), computed_fom.std()
-    
+
 class ComputeEntropy(EvaluationFunction):
     def __init__(self, n_neighbors: int=4, **kwargs):
 
@@ -192,7 +192,7 @@ class ComputeEntropy(EvaluationFunction):
         images = np.reshape(images.shape[0], -1)
         h = entropy(images, approach="metric", k=self.n_neighbors)
         return h
-    
+
 class NNDistanceTrainSet(EvaluationFunction):
     def __init__(self, train_set_path:os.PathLike, **kwargs):
         train_set_path = os.path.expanduser(train_set_path)
@@ -203,9 +203,9 @@ class NNDistanceTrainSet(EvaluationFunction):
         from nanophoto.evaluation.gen_models_comparison import nn_distance_to_train_ds
 
         distances = nn_distance_to_train_ds(gen_set, self.train_set)
-        
+
         return (distances.mean(), distances.std())
-        
+
 
 # Legacy function wrappers for backward compatibility
 def visualize_generated_samples(images: np.ndarray, savepath: str, model_name: str,     n_samples: int = 16) -> str:
@@ -229,17 +229,18 @@ def compute_fom(images: np.ndarray, savepath: str, model_name: str, cfg: OmegaCo
 def evaluation(images: np.ndarray, fom: np.ndarray, model_name: str, cfg: OmegaConf) -> Dict[str, Any]:
     """
     Main evaluation function that runs all configured evaluation functions.
-    
+
     Args:
         images: Generated images array
         fom: Figure of merit values
         model_name: Name of the model
         cfg: Configuration object
-        
+
     Returns:
         Dictionary of evaluation results
     """
     savepath = cfg.savepath
+    os.makedirs(savepath, exist_ok=True)
     results = dict()
 
     for eval_fn_cfg in cfg.evaluation:
