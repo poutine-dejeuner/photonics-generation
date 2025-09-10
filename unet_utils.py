@@ -62,30 +62,42 @@ class unet_pad_fun():
     def __init__(self, num_layers, data_sample):
         self.N = 2**num_layers
 
-        def difference_with_next_multiple(self, x):
+        def difference_with_next_multiple(x):
             reste = x % self.N
             if reste == 0:
                 return 0
             else:
                 return self.N - reste
 
-        padding = []
-        for dim in data_sample.shape[-2:]:
-            padding_needed = difference_with_next_multiple(self, dim)
-            padding_left = padding_needed // 2
-            padding_right = padding_needed - padding_left
-            padding.extend([padding_left, padding_right])
-        self.padding = padding
+        # Get the last 2 dimensions (H, W)
+        h, w = data_sample.shape[-2:]
+        
+        # Calculate padding needed for each dimension
+        h_pad_needed = difference_with_next_multiple(h)
+        w_pad_needed = difference_with_next_multiple(w)
+        
+        # Split padding symmetrically
+        self.h_pad_left = h_pad_needed // 2
+        self.h_pad_right = h_pad_needed - self.h_pad_left
+        self.w_pad_left = w_pad_needed // 2
+        self.w_pad_right = w_pad_needed - self.w_pad_left
+        
+        # Store for F.pad format: [w_left, w_right, h_left, h_right]
+        self.padding = [self.w_pad_left, self.w_pad_right, self.h_pad_left, self.h_pad_right]
 
     def pad(self, x):
-        n = x.ndim
-        n = n - len(self.padding) // 2
-        padding = [0, 0]*n + self.padding
-        padding.reverse()
-        padded_tensor = F.pad(x, padding, mode='constant', value=0)
+        # F.pad expects padding in format [w_left, w_right, h_left, h_right, ...]
+        # For tensors with more than 2 spatial dims, pad with zeros for extra dims
+        n_extra_dims = x.ndim - 2  # Number of non-spatial dimensions (batch, channel, etc.)
+        full_padding = self.padding + [0, 0] * (n_extra_dims - 2) if n_extra_dims > 2 else self.padding
+        
+        padded_tensor = F.pad(x, full_padding, mode='constant', value=0)
         return padded_tensor
 
     def crop(self, x):
-        a, b, c, d = self.padding[:4]
-        cropped_tensor = x[..., a:-b, c:-d]
+        # Create slices for cropping
+        h_slice = slice(self.h_pad_left, -self.h_pad_right if self.h_pad_right > 0 else None)
+        w_slice = slice(self.w_pad_left, -self.w_pad_right if self.w_pad_right > 0 else None)
+        
+        cropped_tensor = x[..., h_slice, w_slice]
         return cropped_tensor

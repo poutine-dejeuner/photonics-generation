@@ -19,6 +19,8 @@ from models.utils import DDPM_Scheduler, set_seed
 from unet_utils import UNetPad, display_reverse
 from nanophoto.meep_compute_fom import compute_FOM_parallele
 
+from icecream import ic
+
 class ResBlock(nn.Module):
     def __init__(self, C: int, num_groups: int, dropout_prob: float):
         super().__init__()
@@ -129,11 +131,13 @@ class UNET(nn.Module):
     def forward(self, x, t):
         x = self.shallow_conv(x)
         residuals = []
+        # compression
         for i in range(self.num_layers//2):
             layer = getattr(self, f'Layer{i+1}')
             embeddings = self.embeddings(t)
             x, r = layer(x, embeddings)
             residuals.append(r)
+        # decompression
         for i in range(self.num_layers//2, self.num_layers):
             layer = getattr(self, f'Layer{i+1}')
             x = torch.concat((layer(x, embeddings)[0], residuals[self.num_layers-i-1]), dim=1)

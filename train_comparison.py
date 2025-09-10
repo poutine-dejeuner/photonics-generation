@@ -37,7 +37,7 @@ def main(cfg):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         savedir = os.path.join(savedir, f"{jobid}_{timestamp}")
 
-    model_name = cfg.model.get('name', cfg.model.get('_target_', 'unknown').split('.')[-1])
+    model_name = cfg.model.name
     savedir = os.path.join(savedir, model_name)
 
     if cfg.inference_only:
@@ -59,34 +59,13 @@ def main(cfg):
 
     modcfg = cfg.model
 
-    # Apply parameter count constraint if specified AND not loading from checkpoint
-    target_params = cfg.get('target_params', None)
-    auto_adjust = cfg.get('auto_adjust_architecture', True)
-
-    if target_params is not None and auto_adjust and not cfg.inference_only:
-        # Check if we're loading from an existing checkpoint
+    if not cfg.inference_only:
         checkpoint_exists = cfg.checkpoint_load_path and os.path.exists(os.path.expanduser(cfg.checkpoint_load_path))
-
-        if not checkpoint_exists:
-            print(f"Adjusting model configuration for target parameter count: {target_params:,}")
-            print(f"Adjusted hidden_dim: {modcfg.get('hidden_dim', 'N/A')}")
-            print(f"Adjusted latent_dim: {modcfg.get('latent_dim', 'N/A')}")
-        else:
-            print(f"Existing checkpoint found at {cfg.checkpoint_load_path}")
-            print("Using current configuration from config file...")
-            # Note: Using config file parameters instead of extracting from checkpoint
-            # Ensure model parameters match what was used during training
-    elif cfg.inference_only:
-        # For inference only, use the configuration from config files
+    else:
         checkpoint_path = os.path.expanduser(cfg.checkpoint_load_path)
-        if os.path.exists(checkpoint_path):
-            print("Inference mode: using model configuration from config file...")
-            print("Note: Ensure config parameters match the checkpoint being loaded")
-        else:
-            print(f"Warning: Checkpoint path {checkpoint_path} does not exist")
 
     if cfg.debug:
-        modcfg.n_images = 1
+        modcfg.n_to_generate = 1
         modcfg.train_set_size = 16
         modcfg.n_epochs = 1
 
@@ -108,14 +87,7 @@ def main(cfg):
         data = (data - data.min()) / (data.max() - data.min())
         print(f"Normalized data to range [0, 1]")
 
-    # Ensure n_epochs is properly computed
-    if hasattr(modcfg, 'n_compute_steps') and modcfg.n_compute_steps:
-        modcfg.n_epochs = int(modcfg.n_compute_steps / n_samples)
-        print(f"Computed n_epochs: {modcfg.n_epochs} (from {modcfg.n_compute_steps} compute steps / {n_samples} samples)")
-    elif not hasattr(modcfg, 'n_epochs') or not modcfg.n_epochs:
-        # Fallback to a reasonable default
-        modcfg.n_epochs = 100
-        print(f"Using fallback n_epochs: {modcfg.n_epochs}")
+    modcfg.n_epochs = int(modcfg.n_compute_steps / n_samples)
 
     # Log model configuration if training (parameter estimation removed due to missing dependencies)
     if cfg.inference_only is False:
@@ -150,11 +122,10 @@ def main(cfg):
     images = inference_fn(checkpoint_path=checkpoint_path, 
                               savepath=images_savepath, cfg=cfg)
 
-    results = evaluation(images, cfg)
+    results = evaluation(images, savedir, cfg)
 
     if cfg.logger:
         run.log(results)
-    ic(results)
 
     return
 

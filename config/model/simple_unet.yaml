@@ -1,5 +1,5 @@
 # Simple UNet model configuration (works with arbitrary image sizes)
-model_name: simple_unet
+name: simple_unet
 defaults:
   - /train: simple_unet
   - /inference: simple_unet

@@ -5,5 +5,7 @@ functions:
     n_samples: 16
   - _target_: evaluation.PlotFomHistogram
   - _target_: evaluation.ComputeEntropy
+    metric: True
   - _target_: evaluation.NNDistanceTrainSet
     train_set_path: ~/scratch/nanophoto/topoptim/fulloptim/images.npy
+    metric: True

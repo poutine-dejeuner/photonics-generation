@@ -1,12 +1,14 @@
 import os
-import json
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
+import yaml
 
 import numpy as np
 import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
 import hydra
+
+from utils.utils import load_wandb_config
 
 from icecream import ic
 
@@ -230,8 +232,7 @@ def compute_fom(images: np.ndarray, savepath: str, model_name: str, cfg: OmegaCo
     return evaluator(images, savepath=savepath, model_name=model_name, cfg=cfg)
 
 
-# @hydra.main(config_path="config", config_name="comparison_config")
-def evaluation(images: np.ndarray, cfg: OmegaConf) -> Dict[str, Any]:
+def evaluation(images: np.ndarray, savepath: os.PathLike, cfg: OmegaConf) -> Dict[str, Any]:
     """
     Main evaluation function that runs all configured evaluation functions.
 
@@ -243,8 +244,6 @@ def evaluation(images: np.ndarray, cfg: OmegaConf) -> Dict[str, Any]:
     Returns:
         Dictionary of evaluation results
     """
-    savepath = cfg.savepath
-    os.makedirs(savepath, exist_ok=True)
     model_name = cfg.model.name
 
     results = dict()
@@ -252,6 +251,7 @@ def evaluation(images: np.ndarray, cfg: OmegaConf) -> Dict[str, Any]:
     # calcul FOM
     eval_fom = hydra.utils.instantiate(cfg.evaluation.fom)
     fom = eval_fom(images, savepath, model_name, cfg)
+    results
 
     for eval_fn_cfg in cfg.evaluation.functions:
         eval_fn = hydra.utils.instantiate(eval_fn_cfg)
@@ -264,81 +264,55 @@ def evaluation(images: np.ndarray, cfg: OmegaConf) -> Dict[str, Any]:
         print(f"Running evaluation function: {fn_name}")
 
         out = eval_fn(images, fom, savepath, model_name, cfg)
-        results[fn_name] = out
+        if "metric" in eval_fn_cfg:
+            results[fn_name] = out
+
+    stats_file_path = os.path.join(savepath, 'stats.yaml')
+    with open(stats_file_path, 'w') as file:
+        yaml.dump(results, file)
 
     return results
 
 
-if __name__ == "__main__":
-    import sys
-
+def main(args):
+    import yaml
     from hydra import initialize, compose
+    from omegaconf import OmegaConf
 
-    from nanophoto.evaluation.gen_models_comparison import (find_file,
-                                                            get_model_name_from_config)
+    if args.debug:
+        images_path = """/network/scratch/l/letournv/nanophoto/comparison/
+                            selected/SimpleUNet/images/images.npy"""
+        images = np.load(images_path)[:4]
+        config_dir = "config"
+        with initialize(config_path=config_dir):
+            cfg = compose(config_name="comparison_config.yaml")
+        cfg["debug"] = True
+        evaluation(images, cfg)
+        return
 
-    if len(sys.argv)>1:
-        path = sys.argv[1]
-    else:
-        path = '.'
+    path = args.path
+    assert "wandb" and "images" in next(os.walk(path))[1]
 
-    config_path = find_file(path, "config.yaml")
-    if config_path:
-        print(f"Found config file at {config_path}")
-        config_dir = os.path.dirname(config_path)
-    else:
-        config_dir = os.path.dirname(__file__)
-        config_dir = os.path.join(config_dir, "config")
+    config_dir = os.path.join(path, "wandb/latest-run/files")
+    config_path = os.path.join(config_dir, "config.yaml")
+    images_path = os.path.join(path, "images/images.npy")
+    assert  os.path.exists(images_path)
+    assert os.path.exists(config_path)
 
-    with initialize(config_path=config_dir):
-        cfg = compose(config_name="comparison_config.yaml")
+    with open(config_path) as cfg:
+        cfg = yaml.safe_load(cfg)
+    cfg = load_wandb_config(cfg)
 
-    images_path = find_file(path, "images.npy")
-    if not images_path:
-        images_path = """/network/scratch/l/letournv/nanophoto/comparison/selected/SimpleUNet/images/images.npy"""
     images = np.load(images_path)
-    
+
     evaluation(images, cfg)
 
 
-    # test_evaluation()
+if __name__ == "__main__":
+    import argparse
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", action='store_true', default=False)
+    parser.add_argument("--path", type=str, default=".")
+    main(parser.parse_args())
 
-# def test_evaluation():
-#     """
-#     Test function to debug evaluation with properly initiated variables.
-#     """
-#     from omegaconf import OmegaConf
-#     import tempfile
-
-#     # Create mock data
-#     images = np.random.rand(8, 1, 101, 91)  # (N, C, H, W) format
-#     fom = np.random.rand(8)
-#     model_name = "test_model"
-
-#     # Create temporary directory for saving
-#     with tempfile.TemporaryDirectory() as temp_dir:
-#         # Create a test configuration with evaluation functions
-#         cfg = OmegaConf.create({
-#             'debug': True,
-#             'savepath': temp_dir,
-#             'model': {'_target_': 'test.model'},
-#             'train_set_size': 1000,
-#             'data_path': '/tmp/test_data',
-#             'evaluation': [
-#                 {'_target_': 'evaluation.VisualizeGeneratedSamples', 'n_samples': 16},
-#                 {'_target_': 'evaluation.PlotFomHistogram'},
-#                 {'_target_': 'evaluation.ComputeFom'},
-#                 {'_target_': 'evaluation.ComputeEntropy'},
-#                 {'_target_': 'evaluation.NNDistanceTrainSet',
-#                  'train_set_path': "~/scratch/nanophoto/topoptim/fulloptim/images.npy"},
-#             ]
-#         })
-
-#         # Test the evaluation function
-#         results = evaluation(images, fom, model_name, cfg)
-
-#         for key, val in results.items():
-#             print()
-#             print(key)
-#             print(val)

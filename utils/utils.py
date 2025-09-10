@@ -10,6 +10,24 @@ import torch.nn.functional as F
 import wandb
 import matplotlib.pyplot as plt
 from einops import rearrange
+from omegaconf import OmegaConf
+
+def load_wandb_config(raw_cfg: dict):
+    import ast
+    """
+    prend une config sauvegardée par wandb et fait un objet omegaconf avec
+    """
+    parsed = {}
+    for k, v in raw_cfg.items():
+        val = v["value"] if isinstance(v, dict) and "value" in v else v
+        # si c'est une string qui ressemble à un dict ou une liste → parser
+        if isinstance(val, str):
+            try:
+                val = ast.literal_eval(val)
+            except Exception:
+                pass  # laisser en string si ça ne marche pas
+        parsed[k] = val
+    return OmegaConf.create(parsed)
 
 
 def find_file(root_dir, name):
