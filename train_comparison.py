@@ -13,7 +13,7 @@ from omegaconf import OmegaConf
 
 from evaluation import evaluation
 
-from nanophoto.utils import make_wandb_run
+from utils.utils import make_wandb_run
 
 from icecream import ic, install
 
@@ -22,7 +22,7 @@ install()
 OmegaConf.register_new_resolver("eval", eval)
 
 
-@hydra.main(config_path="config", config_name="comparison_config")
+@hydra.main(version_base="1.1", config_path="config", config_name="comparison_config")
 def main(cfg):
     OmegaConf.set_struct(cfg, False)
 

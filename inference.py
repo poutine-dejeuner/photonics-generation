@@ -14,7 +14,7 @@ from omegaconf import OmegaConf
 
 
 from train3 import inference_parallele
-from nanophoto.evaluation.evalgen import eval_metrics
+from evaluation.evalgen import eval_metrics
 
 
 def info(type, value, tb):

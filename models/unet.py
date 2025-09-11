@@ -17,9 +17,10 @@ from timm.utils import ModelEmaV3
 
 from models.utils import DDPM_Scheduler, set_seed
 from unet_utils import UNetPad, display_reverse
-from nanophoto.meep_compute_fom import compute_FOM_parallele
+from evaluation.meep_compute_fom import compute_FOM_parallele
 
 from icecream import ic
+
 
 class ResBlock(nn.Module):
     def __init__(self, C: int, num_groups: int, dropout_prob: float):
@@ -33,11 +34,13 @@ class ResBlock(nn.Module):
 
     def forward(self, x, embeddings):
         x = x + embeddings[:, :x.shape[1], :, :]
-        r = self.conv1(self.relu(self.gnorm1(x)))
+        ic(x.shape)
+        r = self.relu(self.gnorm1(x))
+        r = self.conv1(r)
         r = self.dropout(r)
         r = self.conv2(self.relu(self.gnorm2(r)))
         return r + x
-
+    
 class Attention(nn.Module):
     def __init__(self, C: int, num_heads:int , dropout_prob: float):
         super().__init__()
@@ -116,7 +119,7 @@ class UNET(nn.Module):
         self.late_conv = nn.Conv2d(out_channels, out_channels//2, kernel_size=3, padding=1)
         self.output_conv = nn.Conv2d(out_channels//2, output_channels, kernel_size=1)
         self.relu = nn.ReLU(inplace=True)
-        self.embeddings = SinusoidalEmbeddings(time_steps=time_steps, embed_dim=2*max(Channels), device=device)
+        self.embeddings = SinusoidalEmbeddings(time_steps=time_steps, embed_dim=max(Channels), device=device)
         for i in range(self.num_layers):
             layer = UnetLayer(
                 upscale=Upscales[i],
@@ -131,16 +134,17 @@ class UNET(nn.Module):
     def forward(self, x, t):
         x = self.shallow_conv(x)
         residuals = []
-        # compression
         for i in range(self.num_layers//2):
             layer = getattr(self, f'Layer{i+1}')
             embeddings = self.embeddings(t)
             x, r = layer(x, embeddings)
             residuals.append(r)
-        # decompression
         for i in range(self.num_layers//2, self.num_layers):
             layer = getattr(self, f'Layer{i+1}')
-            x = torch.concat((layer(x, embeddings)[0], residuals[self.num_layers-i-1]), dim=1)
+            x = layer(x, embeddings)[0]
+            res = residuals[self.num_layers-i-1]
+            ic(x.shape, res.shape)
+            x = torch.concat((x, res), dim=1)
         return self.output_conv(self.relu(self.late_conv(x)))
 
 
@@ -154,28 +158,24 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir: os.PathL
     ema_decay = cfg.ema_decay
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    assert data.shape[-2:] == cfg.image_shape
     print("TRAINING")
     print(f"{n_epochs} epochs total")
     set_seed(random.randint(0, 2**32-1)) if seed == -1 else set_seed(seed)
     dtype = torch.float32
 
     data = torch.tensor(data, dtype=dtype)
-    data = data.unsqueeze(1)
+    if data.ndim == 3:
+        data = data.unsqueeze(1)
+    assert data.ndim == 4
 
     scheduler = DDPM_Scheduler(num_time_steps=num_time_steps)
 
     model = hydra.utils.instantiate(cfg.model)
     model = model.to(device)
     depth = model.num_layers//2
-
-    # Create a sample with the right shape for UNetPad initialization
-    if len(data.shape) == 3:  # (N, H, W)
-        sample_shape = (1, 1, data.shape[1], data.shape[2])  # (B, C, H, W)
-    else:  # (N, C, H, W)
-        sample_shape = (1, data.shape[1], data.shape[2], data.shape[3])  # (B, C, H, W)
     
-    sample_tensor = torch.zeros(sample_shape)
-    transform = UNetPad(sample_tensor, depth=depth)
+    pad_fn = UNetPad(data, depth=depth)
 
     train_dataset = TensorDataset(data)
     train_loader = DataLoader(
@@ -193,25 +193,21 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir: os.PathL
 
     for i in range(n_epochs):
         total_loss = 0
-        for bidx, x in enumerate(train_loader):
-            x = x[0]
-            # Fix dimensions: remove extra dimension if present
-            if len(x.shape) == 5:  # (B, 1, C, H, W) -> (B, C, H, W)
-                x = x.squeeze(1)
+        for bidx, [x] in enumerate(tqdm(train_loader, desc=f"Epoch {i+1}/{n_epochs}")):
             x = x.cuda()
-            t = torch.randint(0, num_time_steps, (batch_size,))
+            x = pad_fn(x)
+            t = torch.randint(0,num_time_steps,(batch_size,))
             e = torch.randn_like(x, requires_grad=False)
-            a = scheduler.alpha[t].view(batch_size, 1, 1, 1).cuda()
+            a = scheduler.alpha[t].view(batch_size,1,1,1).cuda()
             x = (torch.sqrt(a)*x) + (torch.sqrt(1-a)*e)
-            x = transform(x)
-            output = model(x, t.to(device))
+            output = model(x, t)
             optimizer.zero_grad()
-            output = transform.inverse(output)
             loss = criterion(output, e)
             total_loss += loss.item()
             loss.backward()
             optimizer.step()
             ema.update(model)
+
             if cfg.debug:
                 break  # Only run one batch in debug mode
         print(f'Epoch {i+1} | Loss {total_loss / len(train_loader):.5f}')
@@ -254,6 +250,7 @@ def inference(cfg,
     images = []
     z = torch.randn((1, 1,)+image_shape)
     padding_fn = UNetPad(z, depth=model.num_layers//2)
+
 
     with torch.no_grad():
         samples = []

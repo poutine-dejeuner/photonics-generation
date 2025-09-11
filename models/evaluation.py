@@ -4,7 +4,7 @@ Configurable evaluation functions for the model comparison framework.
 import numpy as np
 from typing import Callable
 
-from nanophoto.meep_compute_fom import compute_FOM_parallele
+from evaluation.meep_compute_fom import compute_FOM_parallele
 
 
 def debug_fom_evaluation(images: np.ndarray) -> np.ndarray:

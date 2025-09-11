@@ -1,6 +1,3 @@
-"""
-UNet-specific utilities to avoid circular imports.
-"""
 import os
 import torch
 import torch.nn.functional as F
@@ -28,7 +25,7 @@ class UNetPad():
 
     def __init__(self, sample: torch.Tensor, depth: int):
         self.depth = depth
-        _, _, h, w = sample.shape
+        h, w = sample.shape[-2:]
         target_h = ((h - 1) // 2**depth + 1) * 2**depth
         target_w = ((w - 1) // 2**depth + 1) * 2**depth
         pad_h = target_h - h
@@ -101,3 +98,20 @@ class unet_pad_fun():
         
         cropped_tensor = x[..., h_slice, w_slice]
         return cropped_tensor
+
+if __name__ == "__main__":
+    def test_padding():
+        import numpy as np
+        
+        depth = 2
+        sample = torch.rand(1,1,101,91)
+        pad_fn = UNetPad(sample, depth)
+        padded_shape = pad_fn(sample).shape[-2:]
+        padded_shape = np.array(padded_shape)
+        print(padded_shape)
+        for n in range(1, depth + 1):
+            print(padded_shape/2**n)
+        assert padded_shape[0]%2**depth == 0, padded_shape[0]%2
+        assert padded_shape[1]%2**depth == 0, padded_shape[1]%2
+
+    test_padding()

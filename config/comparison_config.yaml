@@ -17,6 +17,7 @@ train_set_size: 284
 n_to_generate: 1000
 n_compute_steps: 5_000_000
 n_model_parameters: 35_000_000
+image_shape: [101, 91]
 
 # Data configuration
 data:

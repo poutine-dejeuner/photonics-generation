@@ -12,6 +12,18 @@ import matplotlib.pyplot as plt
 from einops import rearrange
 from omegaconf import OmegaConf
 
+
+def make_wandb_run(config, savepath, run_name, group):
+    wandb_dir = os.path.join(savepath, "wandb")
+    wandb_dir = os.path.expanduser(savepath)
+    if not os.path.isdir(wandb_dir):
+        os.makedirs(wandb_dir)
+    print(run_name)
+    run = wandb.init(entity="nanophoto", project='nanophoto', config=config,
+                     group=group, name=run_name, dir=wandb_dir)
+    return run
+
+
 def load_wandb_config(raw_cfg: dict):
     import ast
     """

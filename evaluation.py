@@ -172,7 +172,7 @@ class ComputeFom(EvaluationFunction):
                  savepath: Optional[str] = None, model_name: Optional[str] = None,
                  cfg: Optional[OmegaConf] = None) -> tuple[float, float]:
 
-        from nanophoto.meep_compute_fom import compute_FOM_parallele
+        from evaluation.meep_compute_fom import compute_FOM_parallele
 
         if cfg.debug and not cfg.meep:
             computed_fom = np.random.rand(images.shape[0])
@@ -206,7 +206,7 @@ class NNDistanceTrainSet(EvaluationFunction):
 
     def __call__(self, gen_set, *args):
 
-        from nanophoto.evaluation.gen_models_comparison import nn_distance_to_train_ds
+        from evaluation.gen_models_comparison import nn_distance_to_train_ds
 
         distances = nn_distance_to_train_ds(gen_set, self.train_set)
 
