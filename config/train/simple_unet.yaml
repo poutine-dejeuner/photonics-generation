@@ -1,3 +1,0 @@
-# Simple UNet training configuration
-_target_: models.simple_unet.train
-_partial_: true

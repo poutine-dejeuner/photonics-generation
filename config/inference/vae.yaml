@@ -1,3 +1,0 @@
-# VAE inference configuration
-_target_: models.vae.inference
-_partial_: true

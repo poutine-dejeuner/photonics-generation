@@ -16,8 +16,8 @@ import matplotlib.pyplot as plt
 import torch.optim as optim
 from timm.utils import ModelEmaV3
 
-from models.unet import UNET
-from models.utils import DDPM_Scheduler, set_seed
+from photo_gen.models.unet import UNET
+from photo_gen.models.utils import DDPM_Scheduler, set_seed
 
 from utils import UNetPad, AttrDict
 

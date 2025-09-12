@@ -1,0 +1,318 @@
+import os
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
+import yaml
+
+import numpy as np
+import matplotlib.pyplot as plt
+from omegaconf import OmegaConf
+import hydra
+
+from photo_gen.utils.utils import load_wandb_config
+
+from icecream import ic
+
+
+class EvaluationFunction(ABC):
+    """Abstract base class for all evaluation functions."""
+
+    def __init__(self, **kwargs):
+        """Initialize the evaluation function with any configuration parameters."""
+        self.config = kwargs
+
+    @abstractmethod
+    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None,
+                 savepath: Optional[str] = None, model_name: Optional[str] = None,
+                 cfg: Optional[OmegaConf] = None) -> Any:
+        """
+        Execute the evaluation function.
+
+        Args:
+            images: Generated images array
+            fom: Figure of merit values (optional)
+            savepath: Directory to save results (optional)
+            model_name: Name of the model (optional)
+            cfg: Configuration object (optional)
+
+        Returns:
+            Evaluation results (type depends on specific function)
+        """
+        pass
+
+    @property
+    def name(self) -> str:
+        """Return the name of this evaluation function."""
+        return self.__class__.__name__
+
+
+class VisualizeGeneratedSamples(EvaluationFunction):
+    """Create a grid visualization of generated samples and save it."""
+
+    def __init__(self, n_samples: int = 16, **kwargs):
+        super().__init__(**kwargs)
+        self.n_samples = n_samples
+
+    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None,
+                 savepath: Optional[str] = None, model_name: Optional[str] = None,
+                 cfg: Optional[OmegaConf] = None) -> str:
+        """
+        Create a grid visualization of generated samples and save it.
+
+        Args:
+            images: Generated images array of shape (N, C, H, W) or (N, H, W)
+            savepath: Directory to save the visualization
+            model_name: Name of the model for the title
+            cfg: Configuration object (unused)
+
+        Returns:
+            Path to the saved visualization file
+        """
+        if savepath is None or model_name is None:
+            raise ValueError("savepath and model_name are required")
+
+        # Ensure we don't exceed available samples
+        n_samples = min(self.n_samples, images.shape[0])
+
+        # Calculate grid dimensions (prefer square grids)
+        grid_size = int(np.ceil(np.sqrt(n_samples)))
+
+        # Create figure
+        fig, axes = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+        fig.suptitle(f'{model_name} - Generated Samples',
+                     fontsize=16, fontweight='bold')
+
+        # Handle case where we have only one subplot
+        if grid_size == 1:
+            axes = [[axes]]
+        elif grid_size == 2 and len(axes.shape) == 1:
+            axes = axes.reshape(2, 2)
+
+        sample_idx = 0
+        for i in range(grid_size):
+            for j in range(grid_size):
+                if grid_size == 1:
+                    ax = axes[0][0]
+                elif grid_size > 1:
+                    ax = axes[i][j]
+                else:
+                    ax = axes[i]
+
+                if sample_idx < n_samples:
+                    # Get the image
+                    img = images[sample_idx]
+
+                    # Handle different image formats
+                    if len(img.shape) == 3:  # (C, H, W)
+                        if img.shape[0] == 1:  # Single channel
+                            img = img.squeeze(0)
+                        else:  # Multi-channel, transpose to (H, W, C)
+                            img = img.transpose(1, 2, 0)
+                    elif len(img.shape) == 2:  # (H, W)
+                        pass  # Already in correct format
+
+                    # Normalize to [0, 1] for display
+                    img_display = (img - img.min()) / \
+                        (img.max() - img.min() + 1e-8)
+
+                    # Display image
+                    if len(img_display.shape) == 2:  # Grayscale
+                        ax.imshow(img_display, cmap='gray', vmin=0, vmax=1)
+                    else:  # Color
+                        ax.imshow(np.clip(img_display, 0, 1))
+
+                    ax.set_title(f'Sample {sample_idx + 1}', fontsize=10)
+                    sample_idx += 1
+                else:
+                    # Hide empty subplots
+                    ax.set_visible(False)
+
+                ax.axis('off')
+
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.93)  # Make room for suptitle
+
+        # Save the visualization
+        save_file = os.path.join(
+            savepath, f"{model_name.lower()}_samples_grid.png")
+        plt.savefig(save_file, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+
+        print(f"Sample grid visualization saved: {save_file}")
+        return save_file
+
+
+class PlotFomHistogram(EvaluationFunction):
+    """Plot histogram of Figure of Merit values."""
+
+    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None,
+                 savepath: Optional[str] = None, model_name: Optional[str] = None,
+                 cfg: Optional[OmegaConf] = None) -> str:
+        """Plot FOM histogram and save it."""
+        if fom is None or savepath is None or model_name is None:
+            raise ValueError("fom, savepath, and model_name are required")
+
+        plt.figure(figsize=(10, 6))
+        plt.hist(fom, bins=100, alpha=0.7, edgecolor='black')
+        plt.title(f"FOM Histogram - {model_name}")
+        plt.xlabel("Figure of Merit")
+        plt.ylabel("Frequency")
+        plt.grid(True, alpha=0.3)
+
+        save_file = os.path.join(savepath, "fom_histogram.png")
+        plt.savefig(save_file, dpi=300, bbox_inches='tight')
+        plt.close()
+
+        return save_file
+
+
+class ComputeFom(EvaluationFunction):
+    """Compute Figure of Merit for generated images."""
+
+    def __call__(self, images: np.ndarray,
+                 savepath: Optional[str] = None, model_name: Optional[str] = None,
+                 cfg: Optional[OmegaConf] = None) -> tuple[float, float]:
+
+        from photo_gen.evaluation.meep_compute_fom import compute_FOM_parallele
+
+        if cfg.debug and not cfg.meep:
+            computed_fom = np.random.rand(images.shape[0])
+        else:
+            computed_fom = compute_FOM_parallele(images)
+
+        np.save(os.path.join(savepath, "fom.npy"), computed_fom)
+        return computed_fom.mean(), computed_fom.std()
+
+
+class ComputeEntropy(EvaluationFunction):
+    def __init__(self, n_neighbors: int = 4, **kwargs):
+
+        self.n_neighbors = n_neighbors
+
+    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None,
+                 savepath: Optional[str] = None, model_name: Optional[str] = None,
+                 cfg: Optional[OmegaConf] = None) -> tuple[float, float]:
+
+        from infomeasure import entropy
+
+        images = np.reshape(images.shape[0], -1)
+        h = entropy(images, approach="metric", k=self.n_neighbors)
+        return h
+
+
+class NNDistanceTrainSet(EvaluationFunction):
+    def __init__(self, train_set_path: os.PathLike, **kwargs):
+        train_set_path = os.path.expanduser(train_set_path)
+        self.train_set = np.load(train_set_path)
+
+    def __call__(self, gen_set, *args):
+
+        from evaluation.gen_models_comparison import nn_distance_to_train_ds
+
+        distances = nn_distance_to_train_ds(gen_set, self.train_set)
+
+        return (distances.mean(), distances.std())
+
+
+# Legacy function wrappers for backward compatibility
+def visualize_generated_samples(images: np.ndarray, savepath: str, model_name: str,     n_samples: int = 16) -> str:
+    """Legacy wrapper for VisualizeGeneratedSamples."""
+    evaluator = VisualizeGeneratedSamples(n_samples=n_samples)
+    return evaluator(images, savepath=savepath, model_name=model_name)
+
+
+def plot_fom_hist(fom: np.ndarray, model_name: str, savedir: str) -> str:
+    """Legacy wrapper for PlotFomHistogram."""
+    evaluator = PlotFomHistogram()
+    return evaluator(None, fom=fom, savepath=savedir, model_name=model_name)
+
+
+def compute_fom(images: np.ndarray, savepath: str, model_name: str, cfg: OmegaConf) -> tuple[float, float]:
+    """Legacy wrapper for ComputeFom."""
+    evaluator = ComputeFom()
+    return evaluator(images, savepath=savepath, model_name=model_name, cfg=cfg)
+
+
+def evaluation(images: np.ndarray, savepath: os.PathLike, cfg: OmegaConf) -> Dict[str, Any]:
+    """
+    Main evaluation function that runs all configured evaluation functions.
+
+    Args:
+        images: Generated images array
+        model_name: Name of the model
+        cfg: Configuration object
+
+    Returns:
+        Dictionary of evaluation results
+    """
+    model_name = cfg.model.name
+
+    results = dict()
+
+    # calcul FOM
+    eval_fom = hydra.utils.instantiate(cfg.evaluation.fom)
+    fom = eval_fom(images, savepath, model_name, cfg)
+    results
+
+    for eval_fn_cfg in cfg.evaluation.functions:
+        eval_fn = hydra.utils.instantiate(eval_fn_cfg)
+
+        if hasattr(eval_fn, '__name__'):
+            fn_name = eval_fn.__name__
+        else:
+            fn_name = str(eval_fn_cfg.get('_target_', 'unknown'))
+
+        print(f"Running evaluation function: {fn_name}")
+
+        out = eval_fn(images, fom, savepath, model_name, cfg)
+        if "metric" in eval_fn_cfg:
+            results[fn_name] = out
+
+    stats_file_path = os.path.join(savepath, 'stats.yaml')
+    with open(stats_file_path, 'w') as file:
+        yaml.dump(results, file)
+
+    return results
+
+
+def main(args):
+    import yaml
+    from hydra import initialize, compose
+    from omegaconf import OmegaConf
+
+    if args.debug:
+        images_path = """/network/scratch/l/letournv/nanophoto/comparison/
+                            selected/SimpleUNet/images/images.npy"""
+        images = np.load(images_path)[:4]
+        config_dir = "config"
+        with initialize(config_path=config_dir):
+            cfg = compose(config_name="comparison_config.yaml")
+        cfg["debug"] = True
+        evaluation(images, cfg)
+        return
+
+    path = args.path
+    assert "wandb" and "images" in next(os.walk(path))[1]
+
+    config_dir = os.path.join(path, "wandb/latest-run/files")
+    config_path = os.path.join(config_dir, "config.yaml")
+    images_path = os.path.join(path, "images/images.npy")
+    assert  os.path.exists(images_path)
+    assert os.path.exists(config_path)
+
+    with open(config_path) as cfg:
+        cfg = yaml.safe_load(cfg)
+    cfg = load_wandb_config(cfg)
+
+    images = np.load(images_path)
+
+    evaluation(images, cfg)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", action='store_true', default=False)
+    parser.add_argument("--path", type=str, default=".")
+    main(parser.parse_args())
+

@@ -1,2 +1,0 @@
-# Debug evaluation - uses random FOM values
-_target_: models.evaluation.debug_fom_evaluation

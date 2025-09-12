@@ -1,0 +1,3 @@
+# Simple UNet inference configuration
+_target_: photo_gen.models.simple_unet.inference
+_partial_: true

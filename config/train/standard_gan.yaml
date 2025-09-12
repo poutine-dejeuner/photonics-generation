@@ -1,5 +1,0 @@
-# Standard GAN training configuration
-_target_: models.standard_gan.train
-_partial_: true
-
-# All parameters will be passed via the cfg object, not as individual kwargs

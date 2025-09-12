@@ -1,3 +1,0 @@
-# Standard GAN inference configuration
-_target_: models.standard_gan.inference
-_partial_: true

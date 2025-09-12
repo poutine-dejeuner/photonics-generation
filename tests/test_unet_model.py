@@ -18,7 +18,7 @@ from omegaconf import OmegaConf
 # Add project path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from models.unet import UNET, ResBlock, Attention, UnetLayer, SinusoidalEmbeddings, train, inference
+from photo_gen.models.unet import UNET, ResBlock, Attention, UnetLayer, SinusoidalEmbeddings, train, inference
 from unet_utils import UNetPad
 
 

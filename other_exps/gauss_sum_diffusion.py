@@ -21,8 +21,8 @@ from timm.utils import ModelEmaV3
 import hydra
 
 # from models.ddpm_basic import ddpm_simple
-from models.unet import UNET
-from models.utils import DDPM_Scheduler, set_seed
+from photo_gen.models.unet import UNET
+from photo_gen.models.utils import DDPM_Scheduler, set_seed
 
 from utils import UNetPad, make_wandb_run
 from nanophoto.meep_compute_fom import compute_FOM_parallele

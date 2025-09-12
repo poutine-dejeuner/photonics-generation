@@ -8,8 +8,8 @@ from torch import sqrt
 from einops import rearrange
 import matplotlib.pyplot as plt
 
-from models.unet import UNET
-from models.utils import DDPM_Scheduler
+from photo_gen.models.unet import UNET
+from photo_gen.models.utils import DDPM_Scheduler
 from timm.utils import ModelEmaV3
 from utils import UNetPad, AttrDict, normalize
 from train3 import display_reverse

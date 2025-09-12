@@ -1,0 +1,3 @@
+# Simple UNet training configuration
+_target_: photo_gen.models.simple_unet.train
+_partial_: true
