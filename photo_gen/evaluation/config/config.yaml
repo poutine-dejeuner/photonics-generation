@@ -1,0 +1,41 @@
+# @package datasets
+datasets:
+  - name: diffusion
+    path: ${env:SCRATCH}/nanophoto/diffusion/train3/7121883/
+    n_samples: 28
+
+  - name: diffusion
+    path: ${env:SCRATCH}/nanophoto/diffusion/train3/7121885/
+    n_samples: 47
+
+  - name: diffusion
+    path: ${env:SCRATCH}/nanophoto/diffusion/train3/7121891/
+    n_samples: 97
+
+  - name: diffusion
+    path: ${env:SCRATCH}/nanophoto/diffusion/train3/7121888/
+    n_samples: 180
+
+  - name: diffusion
+    path: ${env:SCRATCH}/nanophoto/diffusion/train3/7121890/
+    n_samples: 192
+
+  - name: diffusion
+    path: ${env:SCRATCH}/nanophoto/diffusion/train3/7121886/
+    n_samples: 261
+
+  - name: diffusion
+    path: ${env:SCRATCH}/nanophoto/diffusion/train3/7121889/
+    n_samples: 277
+
+  - name: diffusion
+    path: ${env:SCRATCH}/nanophoto/diffusion/train3/7212292/
+    n_samples: 230
+
+  - name: diffusion
+    path: ${env:SCRATCH}/nanophoto/diffusion/train3/7212298/
+    n_samples: 52
+
+  - name: diffusion
+    path: ${env:SCRATCH}/nanophoto/diffusion/train3/7212299/
+    n_samples: 209

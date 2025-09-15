@@ -1,6 +1,6 @@
 """
-Contains functions to be called at the end of a run to evaluate the image
-generation of the model.
+Contains functions to be called at the end of a training run to evaluate the
+image generation of the model.
 """
 import os
 from pathlib import Path
@@ -413,33 +413,26 @@ def evaluate_model(images: np.ndarray, savepath, cfg) -> Dict[str, Any]:
     return results
 
 
-def main(args):
-    path = Path(args.path)
-    savepath = path / "eval_files"
-    savepath.mkdir(parents=True, exist_ok=True)
-    ic(savepath, savepath.exists())
+@hydra.main(version_base=None, config_path='config', config_name='evalgen')
+def main(cfg):
+    for model_name, path, _ in cfg.datasets:
+        path = Path(path)
+        assert "wandb" and "images" in next(os.walk(path))[1]
 
-    assert isinstance(savepath, Path), type(savepath)
-    assert "wandb" and "images" in next(os.walk(path))[1]
+        config_dir = os.path.join(path, "wandb/latest-run/files")
+        config_path = os.path.join(config_dir, "config.yaml")
+        images_path = os.path.join(path, "images/images.npy")
+        assert  os.path.exists(images_path)
+        assert os.path.exists(config_path)
 
-    config_dir = os.path.join(path, "wandb/latest-run/files")
-    config_path = os.path.join(config_dir, "config.yaml")
-    images_path = os.path.join(path, "images/images.npy")
-    assert  os.path.exists(images_path)
-    assert os.path.exists(config_path)
+        with open(config_path, encoding="utf-8") as model_cfg:
+            model_cfg = yaml.safe_load(model_cfg)
+        model_cfg = load_wandb_config(model_cfg)
 
-    with open(config_path, encoding="utf-8") as cfg:
-        cfg = yaml.safe_load(cfg)
-    cfg = load_wandb_config(cfg)
+        images = np.load(images_path)
 
-    images = np.load(images_path)
-
-    evaluate_model(images, savepath, cfg)
+        evaluate_model(images, savepath, model_cfg)
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--path", type=str, default=".")
-    main(parser.parse_args())
+    main()
