@@ -23,62 +23,6 @@ OmegaConf.register_new_resolver("env", lambda k: os.environ.get(k, ""))
 TRAINSETDIR = "/home/mila/l/letournv/scratch/nanophoto/topoptim/fulloptim/"
 
 
-def update_stats_yaml(filepath, key, value):
-    """
-    Update or add a key-value pair in a YAML file.
-    If the key exists, overwrite it. If not, add it.
-    """
-    stats_path = os.path.join(filepath, 'stats.yaml')
-
-    # Load existing data or create empty dict
-    if os.path.exists(stats_path):
-        with open(stats_path, 'r') as f:
-            try:
-                stats = yaml.safe_load(f) or {}
-            except yaml.YAMLError:
-                stats = {}
-    else:
-        stats = {}
-
-    # Update the key
-    stats[key] = value
-
-    # Write back to file
-    with open(stats_path, 'w') as f:
-        yaml.dump(stats, f, default_flow_style=False)
-
-def make_config(path):
-    """
-    search subdirectories of path. If dir/images contains an images.npy and
-    some subdirectory of wandb contains a files/config.yaml, then search
-    config.yaml for a "n_samples" key and record the following entries in a
-    list
-    "name": dir
-    "path": dir/images
-    "n_samples": config["n_samples"]
-    Finally, save the discovered entries in a config.yaml file
-    """
-    import yaml
-    from pathlib import Path
-
-    datasets = []
-    for subdir in Path(path).iterdir():
-        if subdir.is_dir() and (subdir / 'images.npy').exists():
-            images_path = subdir / 'images.npy'
-            config_path = subdir / 'wandb' / 'files' / 'config.yaml'
-            if config_path.exists():
-                with open(config_path, 'r') as f:
-                    config = yaml.safe_load(f)
-                n_samples = config.get('n_samples', None)
-                datasets.append({
-                    "name": subdir.name,
-                    "path": str(images_path),
-                    "n_samples": n_samples
-                })
-    with open(os.path.join(path, 'datasets.yaml'), 'w') as f:
-        yaml.dump(datasets, f)
-
-
 def twoplots_ax(x, y1, y2, xlabel, label1, label2, title, savepath):
     if type(y1) is torch.Tensor:
         y1 = tonumpy(y1)
@@ -376,111 +320,6 @@ def basic_stats(data, fom, savepath):
                     Std {data.std()}''')
 
 
-def plot_umap(data, setname, savepath):
-    import umap
-
-    data = data[0]
-    reducer = umap.UMAP()
-    data = data.reshape(data.shape[0], -1)
-    embedding = reducer.fit_transform(data)
-    plt.scatter(
-        embedding[:, 0],
-        embedding[:, 1],
-    )  # c=[sns.color_palette()[x] for x in data.classes]
-    plt.gca().set_aspect('equal', 'datalim')
-    plt.title(f'UMAP projection of {setname}', fontsize=24)
-    plt.savefig(savepath)
-    plt.clf()
-
-
-def plot_umap_with_images(data, setname, savepath):
-    import umap
-    from matplotlib.offsetbox import OffsetImage, AnnotationBbox
-
-    data = data[0]
-    images = data
-    reducer = umap.UMAP()
-    data = data.reshape(data.shape[0], -1)
-    embedding = reducer.fit_transform(data)
-    fig, ax = plt.subplots()
-    for i in range(embedding.shape[0]):
-        xi = embedding[i, 0]
-        yi = embedding[i, 1]
-        img = images[i]
-        imagebox = OffsetImage(img, zoom=0.1)
-        ab = AnnotationBbox(imagebox, (xi, yi), frameon=False)
-        ax.add_artist(ab)
-    # plt.scatter(
-    #     embedding[:, 0],
-    #     embedding[:, 1],
-    # )  # c=[sns.color_palette()[x] for x in data.classes]
-    plt.gca().set_aspect('equal', 'datalim')
-    plt.title(f'UMAP projection of {setname}', fontsize=24)
-    plt.savefig(savepath)
-    plt.clf()
-
-
-def plot_tsne(data, setname, savepath):
-    from sklearn.manifold import TSNE
-
-    data = data[0]
-    data = data.reshape(data.shape[0], -1)
-    tsne = TSNE(n_components=2, learning_rate='auto',
-                init='random', perplexity=3)
-    embedding = tsne.fit_transform(data)
-    plt.scatter(embedding[:, 0],
-                embedding[:, 1])
-    plt.title(f'TSNE projection of {setname}')
-    plt.savefig(savepath)
-    plt.clf()
-
-
-def nn_distance_to_train_ds(ds_name: str,
-                            gen_ds: torch.Tensor | np.ndarray,
-                            train_ds: torch.Tensor | np.ndarray,
-                            savepath: str):
-    """
-        For each element in ds1, compute the distance to the nearest element in
-        ds2.
-    """
-    if isinstance(gen_ds, np.ndarray):
-        gen_ds = torch.tensor(gen_ds)
-    if isinstance(train_ds, np.ndarray):
-        train_ds = torch.tensor(train_ds)
-
-    switch = True
-    switch = False
-
-    distances = []
-    for x in gen_ds:
-        min_dist = float('inf')
-        for y in train_ds:
-            dist = torch.norm(x - y)
-            if dist < min_dist:
-                min_dist = dist
-                min_train = y
-        if switch is True:
-            fig, axes = plt.subplots(1, 2)
-            axes[0].imshow(x.numpy())
-            axes[1].imshow(min_train.numpy())
-            plt.title(f"{min_dist}")
-            plt.savefig("test.png")
-            plt.close()
-            print('ok')
-            switch = False
-            input()
-
-        distances.append(min_dist)
-    # make nn distance histogram
-    distances = tonumpy(torch.stack(distances))
-    plt.hist(distances, bins=100, density=True, label=ds_name, alpha=0.5)
-    plt.title('Nearest training set neighbor distances')
-    plt.savefig(os.path.join(savepath, 'nn_distance_histogram.png'))
-    plt.legend()
-    # plt.close()
-    np.save(os.path.join(savepath, "nn_train_dist.npy"), distances)
-    update_stats_yaml(savepath, "avg train nn dist", float(distances.mean()))
-    return distances
 
 
 def test__nn_distance_to_train_ds():
@@ -491,29 +330,6 @@ def test__nn_distance_to_train_ds():
     train_data = np.load(os.path.expanduser(train_path))
     train_data = torch.tensor(train_data)
     nn_distance_to_train_ds(gen_data, train_data, "test")
-
-
-def pca_dim_reduction_entropy(ds_name:str, data: np.ndarray, savepath: str, dim: int=50):
-    """
-        returns the per-dimension entropy (entropy divided by dimension) of
-        the data after projection to the first dim PCA components.
-    """
-    from sklearn.decomposition import PCA
-
-    X = data.reshape(data.shape[0], -1)
-    pca = PCA(n_components=dim)
-    X_pca = pca.fit_transform(X)
-    h = im.entropy(X_pca, approach="metric")
-    update_stats_yaml(savepath, f"per dim {dim} PCA entropy", float(h))
-
-
-def compute_entropy(data: np.ndarray, savepath: str):
-    """
-    Compute the entropy of the data.
-    """
-    data = data.reshape(data.shape[0], -1)
-    h = im.entropy(data, approach="metric")
-    update_stats_yaml(savepath, "entropy", float(h))
 
 
 def eval_metrics(datasets: dict["name":str, "path":str],

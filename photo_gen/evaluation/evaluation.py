@@ -1,16 +1,24 @@
 """
+Contains functions to be called at the end of a run to evaluate the image
+generation of the model.
 """
 import os
+from pathlib import Path
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 import yaml
 
 import numpy as np
+import torch
 import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
 import hydra
+from hydra import initialize, compose
+import infomeasure as im
 
 from photo_gen.utils.utils import load_wandb_config
+from photo_gen.evaluation.eval_utils import (update_stats_yaml, tonumpy,)
+from photo_gen.evaluation.meep_compute_fom import compute_FOM_parallele
 
 from icecream import ic
 
@@ -23,9 +31,8 @@ class EvaluationFunction(ABC):
         self.config = kwargs
 
     @abstractmethod
-    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None,
-                 savepath: Optional[str] = None, model_name: Optional[str] = None,
-                 cfg: Optional[OmegaConf] = None) -> Any:
+    def __call__(self, images: np.ndarray, savepath: str, model_name: str,
+                 fom: Optional[np.ndarray] = None, cfg: Optional[OmegaConf] = None) -> Any:
         """
         Execute the evaluation function.
 
@@ -54,9 +61,8 @@ class VisualizeGeneratedSamples(EvaluationFunction):
         super().__init__(**kwargs)
         self.n_samples = n_samples
 
-    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None,
-                 savepath: Optional[str] = None, model_name: Optional[str] = None,
-                 cfg: Optional[OmegaConf] = None) -> str:
+    def __call__(self, images: np.ndarray, savepath: str, model_name: str,
+                 fom: Optional[np.ndarray] = None, cfg: Optional[OmegaConf] = None) -> str:
         """
         Create a grid visualization of generated samples and save it.
 
@@ -77,24 +83,38 @@ class VisualizeGeneratedSamples(EvaluationFunction):
         images = images.squeeze()
         grid_size = int(np.ceil(np.sqrt(n_samples)))
         fig, axes = plt.subplots(grid_size, grid_size, figsize=(12, 12))
+        
+        # Ensure axes is always a 2D array for consistent indexing
+        if grid_size == 1:
+            axes = np.array([[axes]])
+        elif len(axes.shape) == 1:
+            axes = axes.reshape(-1, 1)
+            
         fig.suptitle(f'{model_name} - Generated Samples',
                      fontsize=16, fontweight='bold')
 
-        idx_range = list(range(n_samples))
-        for sample_idx, (i, j) in enumerate(product(idx_range, idx_range)):
-            ax = axes[i, j]
-            img = images[sample_idx]
-            img = (img - img.min()) / \
-                (img.max() - img.min() + 1e-8)
-            ax.imshow(img, vmin=0, vmax=1)
-            ax.set_title(f'samples from {model_name}', fontsize=10)
-            ax.axis('off')
+        sample_idx = 0
+        for i in range(grid_size):
+            for j in range(grid_size):
+                ax = axes[i, j]
+                if sample_idx >= n_samples:
+                    # Hide empty subplots
+                    ax.axis('off')
+                    continue
+                
+                img = images[sample_idx]
+                img = (img - img.min()) / \
+                    (img.max() - img.min() + 1e-8)
+                ax.imshow(img, vmin=0, vmax=1)
+                ax.set_title(f'samples from {model_name}', fontsize=10)
+                ax.axis('off')
+                sample_idx += 1
 
         plt.tight_layout()
         plt.subplots_adjust(top=0.93)
 
-        save_file = os.path.join(
-            savepath, f"{model_name.lower()}_samples_grid.png")
+        save_file = os.path.join(savepath,
+                                f"{model_name.lower()}_samples_grid.png")
         plt.savefig(save_file, dpi=300, bbox_inches='tight', facecolor='white')
         plt.close()
 
@@ -105,12 +125,11 @@ class VisualizeGeneratedSamples(EvaluationFunction):
 class PlotFomHistogram(EvaluationFunction):
     """Plot histogram of Figure of Merit values."""
 
-    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None,
-                 savepath: Optional[str] = None, model_name: Optional[str] = None,
-                 cfg: Optional[OmegaConf] = None) -> str:
+    def __call__(self, images: np.ndarray, savepath: str, model_name: str,
+                 fom: Optional[np.ndarray] = None, cfg: Optional[OmegaConf] = None) -> str:
         """Plot FOM histogram and save it."""
-        if fom is None or savepath is None or model_name is None:
-            raise ValueError("fom, savepath, and model_name are required")
+        if fom is None:
+            return "No FOM values provided for histogram."
 
         plt.figure(figsize=(10, 6))
         plt.hist(fom, bins=100, alpha=0.7, edgecolor='black')
@@ -126,16 +145,12 @@ class PlotFomHistogram(EvaluationFunction):
         return save_file
 
 
-class ComputeFOM(EvaluationFunction):
+class FOM(EvaluationFunction):
     """Compute Figure of Merit for generated images."""
 
-    def __call__(self, images: np.ndarray,
-                 savepath: Optional[str] = None, model_name: Optional[str] = None,
-                 cfg: Optional[OmegaConf] = None) -> tuple[float, float]:
-
-        from photo_gen.evaluation.meep_compute_fom import compute_FOM_parallele
-
-        if cfg.debug and not cfg.meep:
+    def __call__(self, images: np.ndarray, savepath: str, model_name: str,
+                 fom: Optional[np.ndarray] = None, cfg: Optional[OmegaConf] = None) -> tuple[float, float]:
+        if cfg and hasattr(cfg, 'debug') and cfg.debug and hasattr(cfg, 'meep') and not cfg.meep:
             computed_fom = np.random.rand(images.shape[0])
         else:
             computed_fom = compute_FOM_parallele(images)
@@ -144,14 +159,41 @@ class ComputeFOM(EvaluationFunction):
         return computed_fom.mean(), computed_fom.std()
 
 
-class ComputeEntropy(EvaluationFunction):
+def pca_dim_reduction_entropy(images, dim, n_neighbors):
+    """
+        returns the per-dimension entropy (entropy divided by dimension) of
+        the data after projection to the first dim PCA components.
+    """
+    from sklearn.decomposition import PCA
+    import infomeasure as im
+
+    x = images.reshape(images.shape[0], -1)
+    pca = PCA(n_components=dim)
+    x_pca = pca.fit_transform(x)
+    h = im.entropy(x_pca, approach="metric", k=n_neighbors)
+    return h
+
+
+class PCAProjPerDimEntropy(EvaluationFunction):
+    def __init__(self, n_neighbors: int = 4, dim: int=50, **kwargs):
+        """
+        n_neighbors: the number of nearest neighbors to use for the estimation of the entropy
+        dim: the number of PCA components to use for projection
+        """
+        self.n_neighbors = n_neighbors
+        self.dim = dim
+
+    def __call__(self, images: np.ndarray, **kwargs):
+        return pca_dim_reduction_entropy(images, self.dim, self.n_neighbors)
+
+
+class Entropy(EvaluationFunction):
     def __init__(self, n_neighbors: int = 4, **kwargs):
 
         self.n_neighbors = n_neighbors
 
-    def __call__(self, images: np.ndarray, fom: Optional[np.ndarray] = None,
-                 savepath: Optional[str] = None, model_name: Optional[str] = None,
-                 cfg: Optional[OmegaConf] = None) -> tuple[float, float]:
+    def __call__(self, images: np.ndarray, savepath: str, model_name: str,
+                 fom: Optional[np.ndarray] = None, cfg: Optional[OmegaConf] = None) -> tuple[float, float]:
 
         from infomeasure import entropy
 
@@ -165,46 +207,182 @@ class NNDistanceTrainSet(EvaluationFunction):
         train_set_path = os.path.expanduser(train_set_path)
         self.train_set = np.load(train_set_path)
 
-    def __call__(self, images, savepath, model_name, **kwargs):
+    def __call__(self, images: np.ndarray, savepath: str, model_name: str,
+                fom: Optional[np.ndarray] = None, cfg: Optional[OmegaConf] = None) -> dict[str, float]:
+        distances_dict = nn_distance_to_train_ds(model_name, images, self.train_set, savepath)
 
-        from photo_gen.evaluation.evalgen import nn_distance_to_train_ds
-
-        distances = nn_distance_to_train_ds(model_name, images, self.train_set, savepath)
-
-        return (distances.mean(), distances.std())
+        return distances_dict
 
 
-# Legacy function wrappers for backward compatibility
-def visualize_generated_samples(images: np.ndarray, savepath: str, model_name: str,     n_samples: int = 16) -> str:
-    """Legacy wrapper for VisualizeGeneratedSamples."""
-    evaluator = VisualizeGeneratedSamples(n_samples=n_samples)
-    return evaluator(images, savepath=savepath, model_name=model_name)
+class PairwiseDistanceEntropy(EvaluationFunction):
+    """Compute entropy of pairwise distances between generated images."""
+    
+    def __init__(self, n_neighbors: int = 4, **kwargs):
+        """
+        Args:
+            n_neighbors: Number of nearest neighbors for entropy estimation
+        """
+        super().__init__(**kwargs)
+        self.n_neighbors = n_neighbors
+    
+    def __call__(self, images: np.ndarray, savepath: str, model_name: str,
+                 fom: Optional[np.ndarray] = None, cfg: Optional[OmegaConf] = None) -> float:
+        """
+        Compute entropy of pairwise distances between images.
+        
+        Returns:
+            Entropy value of the pairwise distance distribution
+        """
+        from scipy.spatial.distance import pdist
+        
+        images_flat = images.reshape(images.shape[0], -1)
+        pairwise_distances = pdist(images_flat, metric='euclidean')
+        distances_array = pairwise_distances.reshape(-1, 1)
+
+        
+        entropy_value = im.entropy(distances_array, approach="metric", k=self.n_neighbors)
+        
+        return float(entropy_value)
 
 
-def plot_fom_hist(fom: np.ndarray, model_name: str, savedir: str) -> str:
-    """Legacy wrapper for PlotFomHistogram."""
-    evaluator = PlotFomHistogram()
-    return evaluator(None, fom=fom, savepath=savedir, model_name=model_name)
+class ImageAverageEntropy(EvaluationFunction):
+    """Compute entropy of the average of generated images."""
+    
+    def __init__(self, n_neighbors: int = 4, **kwargs):
+        """
+        Args:
+            n_neighbors: Number of nearest neighbors for entropy estimation
+        """
+        super().__init__(**kwargs)
+        self.n_neighbors = n_neighbors
+    
+    def __call__(self, images: np.ndarray, savepath: str, model_name: str,
+                 fom: Optional[np.ndarray] = None, cfg: Optional[OmegaConf] = None) -> float:
+        """
+        Compute entropy of the average image across all generated samples.
+        
+        Returns:
+            Entropy value of the average image
+        """        
+        # Compute the average image across all samples
+        avg_image = np.mean(images, axis=0)
+        
+        # Flatten the average image for entropy computation
+        avg_image_flat = avg_image.flatten()
+        
+        # Compute entropy using k-nearest neighbors approach
+        entropy_value = im.entropy(avg_image_flat, approach="metric", k=self.n_neighbors)
+        
+        return float(entropy_value)
 
 
-def compute_fom(images: np.ndarray, savepath: str, model_name: str, cfg: OmegaConf) -> tuple[float, float]:
-    """Legacy wrapper for ComputeFom."""
-    evaluator = ComputeFom()
-    return evaluator(images, savepath=savepath, model_name=model_name, cfg=cfg)
+def nn_distance_to_train_ds(ds_name: str,
+                            gen_ds: torch.Tensor | np.ndarray,
+                            train_ds: torch.Tensor | np.ndarray,
+                            savepath: str)->dict[str, float]:
+    """
+        For each element in ds1, compute the distance to the nearest element in
+        ds2.
+    """
+    if isinstance(gen_ds, np.ndarray):
+        gen_ds = torch.tensor(gen_ds)
+    if isinstance(train_ds, np.ndarray):
+        train_ds = torch.tensor(train_ds)
+
+    distances = []
+    for x in gen_ds:
+        min_dist = float('inf')
+        for y in train_ds:
+            dist = torch.norm(x - y)
+            if dist < min_dist:
+                min_dist = dist
+
+        distances.append(min_dist)
+    # make nn distance histogram
+    distances = tonumpy(torch.stack(distances))
+    plt.hist(distances, bins=100, density=True, label=ds_name, alpha=0.5)
+    plt.title('Nearest training set neighbor distances')
+    plt.savefig(os.path.join(savepath, 'nn_distance_histogram.png'))
+    plt.legend()
+    plt.close()
+
+    results = {"mean": distances.mean().item(), "std": distances.std().item()}
+    return results
 
 
-def evaluate_model(images: np.ndarray, savepath: os.PathLike, cfg: OmegaConf) -> Dict[str, Any]:
+def plot_umap(data, setname, savepath):
+    import umap
+
+    data = data[0]
+    reducer = umap.UMAP()
+    data = data.reshape(data.shape[0], -1)
+    embedding = reducer.fit_transform(data)
+    plt.scatter(
+        embedding[:, 0],
+        embedding[:, 1],
+    )  # c=[sns.color_palette()[x] for x in data.classes]
+    plt.gca().set_aspect('equal', 'datalim')
+    plt.title(f'UMAP projection of {setname}', fontsize=24)
+    plt.savefig(savepath)
+    plt.clf()
+
+
+def plot_umap_with_images(data, setname, savepath):
+    import umap
+    from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+
+    data = data[0]
+    images = data
+    reducer = umap.UMAP()
+    data = data.reshape(data.shape[0], -1)
+    embedding = reducer.fit_transform(data)
+    fig, ax = plt.subplots()
+    for i in range(embedding.shape[0]):
+        xi = embedding[i, 0]
+        yi = embedding[i, 1]
+        img = images[i]
+        imagebox = OffsetImage(img, zoom=0.1)
+        ab = AnnotationBbox(imagebox, (xi, yi), frameon=False)
+        ax.add_artist(ab)
+    # plt.scatter(
+    #     embedding[:, 0],
+    #     embedding[:, 1],
+    # )  # c=[sns.color_palette()[x] for x in data.classes]
+    plt.gca().set_aspect('equal', 'datalim')
+    plt.title(f'UMAP projection of {setname}', fontsize=24)
+    plt.savefig(savepath)
+    plt.clf()
+
+
+def plot_tsne(data, setname, savepath):
+    from sklearn.manifold import TSNE
+
+    data = data[0]
+    data = data.reshape(data.shape[0], -1)
+    tsne = TSNE(n_components=2, learning_rate='auto',
+                init='random', perplexity=3)
+    embedding = tsne.fit_transform(data)
+    plt.scatter(embedding[:, 0],
+                embedding[:, 1])
+    plt.title(f'TSNE projection of {setname}')
+    plt.savefig(savepath)
+    plt.clf()
+
+
+def evaluate_model(images: np.ndarray, savepath, cfg) -> Dict[str, Any]:
     """
     Main evaluation function that runs all configured evaluation functions.
 
     Args:
         images: Generated images array
-        model_name: Name of the model
+        savepath: Path to save results (string or Path object)
         cfg: Configuration object
 
     Returns:
         Dictionary of evaluation results
     """
+    # Ensure savepath is a Path object
+    savepath = Path(savepath)
     model_name = cfg.model.name
 
     results = dict()
@@ -212,7 +390,6 @@ def evaluate_model(images: np.ndarray, savepath: os.PathLike, cfg: OmegaConf) ->
     # calcul FOM
     eval_fom = hydra.utils.instantiate(cfg.evaluation.fom)
     fom = eval_fom(images, savepath, model_name, cfg)
-    results
 
     for eval_fn_cfg in cfg.evaluation.functions:
         eval_fn = hydra.utils.instantiate(eval_fn_cfg)
@@ -229,34 +406,20 @@ def evaluate_model(images: np.ndarray, savepath: os.PathLike, cfg: OmegaConf) ->
         if "metric" in eval_fn_cfg:
             results[fn_name] = out
 
-    stats_file_path = os.path.join(savepath, 'stats.yaml')
-    with open(stats_file_path, 'w') as file:
-        yaml.dump(results, file)
+    
+    stats_file_path = savepath / 'stats.yaml'
+    update_stats_yaml(stats_file_path, results)
 
     return results
 
 
 def main(args):
-    import yaml
-    from hydra import initialize, compose
-    from omegaconf import OmegaConf
-    from pathlib import Path
-
-    savepath = Path(args.path) / "eval_files" 
+    path = Path(args.path)
+    savepath = path / "eval_files"
     savepath.mkdir(parents=True, exist_ok=True)
     ic(savepath, savepath.exists())
 
-    if args.debug:
-        images_path = """/home/mila/l/letournv/drive_scratch/nanophoto/diffusion/train3/7121883/images.npy"""
-        images = np.load(images_path)[:4]
-        config_dir = "../config"
-        with initialize(config_path=config_dir):
-            cfg = compose(config_name="comparison_config.yaml")
-        cfg["debug"] = True
-        evaluate_model(images, savepath, cfg)
-        return
-
-    path = args.path
+    assert isinstance(savepath, Path), type(savepath)
     assert "wandb" and "images" in next(os.walk(path))[1]
 
     config_dir = os.path.join(path, "wandb/latest-run/files")
@@ -265,7 +428,7 @@ def main(args):
     assert  os.path.exists(images_path)
     assert os.path.exists(config_path)
 
-    with open(config_path) as cfg:
+    with open(config_path, encoding="utf-8") as cfg:
         cfg = yaml.safe_load(cfg)
     cfg = load_wandb_config(cfg)
 
@@ -278,7 +441,5 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--debug", action='store_true', default=False)
     parser.add_argument("--path", type=str, default=".")
     main(parser.parse_args())
-
