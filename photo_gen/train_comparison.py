@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import hydra
 from omegaconf import OmegaConf
 
-from evaluation import evaluation
+from photo_gen.evaluation.evaluation import evaluate_model
 
 from utils.utils import make_wandb_run
 
@@ -122,7 +122,7 @@ def main(cfg):
     images = inference_fn(checkpoint_path=checkpoint_path, 
                               savepath=images_savepath, cfg=cfg)
 
-    results = evaluation(images, savedir, cfg)
+    results = evaluate_model(images, savedir, cfg)
 
     if cfg.logger:
         run.log(results)

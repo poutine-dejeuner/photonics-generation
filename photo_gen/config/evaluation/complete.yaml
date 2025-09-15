@@ -1,11 +1,11 @@
 defaults:
   - fom: meep
 functions:
-  - _target_: evaluation.VisualizeGeneratedSamples
+  - _target_: photo_gen.evaluation.evaluation.VisualizeGeneratedSamples
     n_samples: 16
-  - _target_: evaluation.PlotFomHistogram
-  - _target_: evaluation.ComputeEntropy
+  - _target_: photo_gen.evaluation.evaluation.PlotFomHistogram
+  - _target_: photo_gen.evaluation.evaluation.ComputeEntropy
     metric: True
-  - _target_: evaluation.NNDistanceTrainSet
+  - _target_: photo_gen.evaluation.evaluation.NNDistanceTrainSet
     train_set_path: ~/scratch/nanophoto/topoptim/fulloptim/images.npy
     metric: True

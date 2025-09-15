@@ -29,7 +29,7 @@ def update_stats_yaml(filepath, key, value):
     If the key exists, overwrite it. If not, add it.
     """
     stats_path = os.path.join(filepath, 'stats.yaml')
-    
+
     # Load existing data or create empty dict
     if os.path.exists(stats_path):
         with open(stats_path, 'r') as f:
@@ -39,10 +39,10 @@ def update_stats_yaml(filepath, key, value):
                 stats = {}
     else:
         stats = {}
-    
+
     # Update the key
     stats[key] = value
-    
+
     # Write back to file
     with open(stats_path, 'w') as f:
         yaml.dump(stats, f, default_flow_style=False)
@@ -480,6 +480,7 @@ def nn_distance_to_train_ds(ds_name: str,
     # plt.close()
     np.save(os.path.join(savepath, "nn_train_dist.npy"), distances)
     update_stats_yaml(savepath, "avg train nn dist", float(distances.mean()))
+    return distances
 
 
 def test__nn_distance_to_train_ds():

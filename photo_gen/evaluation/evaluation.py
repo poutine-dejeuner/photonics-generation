@@ -1,3 +1,5 @@
+"""
+"""
 import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
@@ -67,71 +69,30 @@ class VisualizeGeneratedSamples(EvaluationFunction):
         Returns:
             Path to the saved visualization file
         """
-        if savepath is None or model_name is None:
-            raise ValueError("savepath and model_name are required")
+        from itertools import product
 
-        # Ensure we don't exceed available samples
+
         n_samples = min(self.n_samples, images.shape[0])
-
-        # Calculate grid dimensions (prefer square grids)
+        assert n_samples >= 4
+        images = images.squeeze()
         grid_size = int(np.ceil(np.sqrt(n_samples)))
-
-        # Create figure
         fig, axes = plt.subplots(grid_size, grid_size, figsize=(12, 12))
         fig.suptitle(f'{model_name} - Generated Samples',
                      fontsize=16, fontweight='bold')
 
-        # Handle case where we have only one subplot
-        if grid_size == 1:
-            axes = [[axes]]
-        elif grid_size == 2 and len(axes.shape) == 1:
-            axes = axes.reshape(2, 2)
-
-        sample_idx = 0
-        for i in range(grid_size):
-            for j in range(grid_size):
-                if grid_size == 1:
-                    ax = axes[0][0]
-                elif grid_size > 1:
-                    ax = axes[i][j]
-                else:
-                    ax = axes[i]
-
-                if sample_idx < n_samples:
-                    # Get the image
-                    img = images[sample_idx]
-
-                    # Handle different image formats
-                    if len(img.shape) == 3:  # (C, H, W)
-                        if img.shape[0] == 1:  # Single channel
-                            img = img.squeeze(0)
-                        else:  # Multi-channel, transpose to (H, W, C)
-                            img = img.transpose(1, 2, 0)
-                    elif len(img.shape) == 2:  # (H, W)
-                        pass  # Already in correct format
-
-                    # Normalize to [0, 1] for display
-                    img_display = (img - img.min()) / \
-                        (img.max() - img.min() + 1e-8)
-
-                    # Display image
-                    if len(img_display.shape) == 2:  # Grayscale
-                        ax.imshow(img_display, cmap='gray', vmin=0, vmax=1)
-                    else:  # Color
-                        ax.imshow(np.clip(img_display, 0, 1))
-
-                    ax.set_title(f'Sample {sample_idx + 1}', fontsize=10)
-                    sample_idx += 1
-                else:
-                    # Hide empty subplots
-                    ax.set_visible(False)
-
-                ax.axis('off')
+        idx_range = list(range(n_samples))
+        for sample_idx, (i, j) in enumerate(product(idx_range, idx_range)):
+            ax = axes[i, j]
+            img = images[sample_idx]
+            img = (img - img.min()) / \
+                (img.max() - img.min() + 1e-8)
+            ax.imshow(img, vmin=0, vmax=1)
+            ax.set_title(f'samples from {model_name}', fontsize=10)
+            ax.axis('off')
 
         plt.tight_layout()
-        plt.subplots_adjust(top=0.93)  # Make room for suptitle
+        plt.subplots_adjust(top=0.93)
 
-        # Save the visualization
         save_file = os.path.join(
             savepath, f"{model_name.lower()}_samples_grid.png")
         plt.savefig(save_file, dpi=300, bbox_inches='tight', facecolor='white')
@@ -165,7 +126,7 @@ class PlotFomHistogram(EvaluationFunction):
         return save_file
 
 
-class ComputeFom(EvaluationFunction):
+class ComputeFOM(EvaluationFunction):
     """Compute Figure of Merit for generated images."""
 
     def __call__(self, images: np.ndarray,
@@ -204,11 +165,11 @@ class NNDistanceTrainSet(EvaluationFunction):
         train_set_path = os.path.expanduser(train_set_path)
         self.train_set = np.load(train_set_path)
 
-    def __call__(self, gen_set, *args):
+    def __call__(self, images, savepath, model_name, **kwargs):
 
-        from evaluation.gen_models_comparison import nn_distance_to_train_ds
+        from photo_gen.evaluation.evalgen import nn_distance_to_train_ds
 
-        distances = nn_distance_to_train_ds(gen_set, self.train_set)
+        distances = nn_distance_to_train_ds(model_name, images, self.train_set, savepath)
 
         return (distances.mean(), distances.std())
 
@@ -232,7 +193,7 @@ def compute_fom(images: np.ndarray, savepath: str, model_name: str, cfg: OmegaCo
     return evaluator(images, savepath=savepath, model_name=model_name, cfg=cfg)
 
 
-def evaluation(images: np.ndarray, savepath: os.PathLike, cfg: OmegaConf) -> Dict[str, Any]:
+def evaluate_model(images: np.ndarray, savepath: os.PathLike, cfg: OmegaConf) -> Dict[str, Any]:
     """
     Main evaluation function that runs all configured evaluation functions.
 
@@ -263,7 +224,8 @@ def evaluation(images: np.ndarray, savepath: os.PathLike, cfg: OmegaConf) -> Dic
 
         print(f"Running evaluation function: {fn_name}")
 
-        out = eval_fn(images, fom, savepath, model_name, cfg)
+        out = eval_fn(images=images, fom=fom, savepath=savepath,
+                      model_name=model_name, cfg=cfg)
         if "metric" in eval_fn_cfg:
             results[fn_name] = out
 
@@ -278,16 +240,20 @@ def main(args):
     import yaml
     from hydra import initialize, compose
     from omegaconf import OmegaConf
+    from pathlib import Path
+
+    savepath = Path(args.path) / "eval_files" 
+    savepath.mkdir(parents=True, exist_ok=True)
+    ic(savepath, savepath.exists())
 
     if args.debug:
-        images_path = """/network/scratch/l/letournv/nanophoto/comparison/
-                            selected/SimpleUNet/images/images.npy"""
+        images_path = """/home/mila/l/letournv/drive_scratch/nanophoto/diffusion/train3/7121883/images.npy"""
         images = np.load(images_path)[:4]
-        config_dir = "config"
+        config_dir = "../config"
         with initialize(config_path=config_dir):
             cfg = compose(config_name="comparison_config.yaml")
         cfg["debug"] = True
-        evaluation(images, cfg)
+        evaluate_model(images, savepath, cfg)
         return
 
     path = args.path
@@ -305,7 +271,7 @@ def main(args):
 
     images = np.load(images_path)
 
-    evaluation(images, cfg)
+    evaluate_model(images, savepath, cfg)
 
 
 if __name__ == "__main__":

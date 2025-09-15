@@ -128,8 +128,9 @@ class UNET(nn.Module):
         return self.output_conv(self.relu(self.late_conv(x)))
 
 def main():
-    x = torch.randn(4, 1, 104, 96).cuda()
-    t = torch.randint(0,1000,(64,)).cuda()
+    batch_size = 2
+    x = torch.randn(batch_size, 1, 104, 96).cuda()
+    t = torch.randint(0,1000,(batch_size,)).cuda()
     #t = [random.randint(0, 999) for _ in range(16)]
     model = UNET().cuda()
     model(x,t)

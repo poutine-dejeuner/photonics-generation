@@ -9,7 +9,7 @@ from typing import List
 import random
 import math
 import pdb
-from torch import device
+from torch import batch_norm, device
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 import hydra
@@ -108,7 +108,8 @@ class UNET(nn.Module):
             input_channels: int = 1,
             output_channels: int = 1,
             device: device = 'cuda',
-            time_steps: int = 1000):
+            time_steps: int = 1000,
+            **kwargs):
         super().__init__()
         self.num_layers = len(Channels)
         self.shallow_conv = nn.Conv2d(input_channels, Channels[0], kernel_size=3, padding=1)
@@ -168,8 +169,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir: os.PathL
     model = hydra.utils.instantiate(cfg.model)
     model = model.to(device)
     depth = model.num_layers//2
-    ic(depth)
-    
+
     pad_fn = UNetPad(data, depth=depth)
 
     assert data.shape[-2:] == cfg.image_shape
@@ -227,6 +227,7 @@ def inference(cfg,
               checkpoint_path: str = None,
               savepath: str = "images",
               meep_eval: bool = True,
+              **kwargs,
               ):
     num_time_steps = cfg.model.num_time_steps
     ema_decay = cfg.model.ema_decay
@@ -288,8 +289,9 @@ def inference(cfg,
 
 
 def main():
-    x = torch.randn(4, 1, 101, 91).cuda()
-    t = torch.randint(0,1000,(64,)).cuda()
+    batch_size = 2
+    x = torch.randn(batch_size, 1, 101, 91).cuda()
+    t = torch.randint(0,1000,(batch_size,)).cuda()
     #t = [random.randint(0, 999) for _ in range(16)]
     model = UNET().cuda()
 
@@ -309,6 +311,7 @@ def main():
     y = model(x,t)
     ic(y.shape)
     assert y.shape == x.shape
+
     n_params = 0
     for p in model.parameters():
         n_params += p.numel()
