@@ -13,11 +13,10 @@ functions:
   - _target_: photo_gen.evaluation.evaluation.NNDistanceTrainSet
     train_set_path: ~/scratch/nanophoto/topoptim/fulloptim/images.npy
     metric: True
-  - _target_: photo_gen.evaluation.evaluation.PCAProjPerDimEntropy
-    dim: 50
+  - _target_: photo_gen.evaluation.evaluation.ImageAverageEntropy
     n_neighbors: 4
     metric: True  
-  - _target_: photo_gen.evaluation.evaluation.PCAProjPerDimEntropy
-    dim: 50
+  - _target_: photo_gen.evaluation.evaluation.PairwiseDistanceEntropy
     n_neighbors: 4
     metric: True
+    

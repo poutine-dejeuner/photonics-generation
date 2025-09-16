@@ -156,7 +156,7 @@ class FOM(EvaluationFunction):
             computed_fom = compute_FOM_parallele(images)
 
         np.save(os.path.join(savepath, "fom.npy"), computed_fom)
-        return computed_fom.mean(), computed_fom.std()
+        return float(computed_fom.mean()), float(computed_fom.std())
 
 
 def pca_dim_reduction_entropy(images, dim, n_neighbors):
@@ -171,7 +171,7 @@ def pca_dim_reduction_entropy(images, dim, n_neighbors):
     pca = PCA(n_components=dim)
     x_pca = pca.fit_transform(x)
     h = im.entropy(x_pca, approach="metric", k=n_neighbors)
-    return h
+    return float(h)
 
 
 class PCAProjPerDimEntropy(EvaluationFunction):
@@ -193,13 +193,13 @@ class Entropy(EvaluationFunction):
         self.n_neighbors = n_neighbors
 
     def __call__(self, images: np.ndarray, savepath: str, model_name: str,
-                 fom: Optional[np.ndarray] = None, cfg: Optional[OmegaConf] = None) -> tuple[float, float]:
+                 fom: Optional[np.ndarray] = None, cfg: Optional[OmegaConf] = None) -> float:
 
         from infomeasure import entropy
 
-        images = np.reshape(images.shape[0], -1)
+        images = images.reshape(images.shape[0], -1)
         h = entropy(images, approach="metric", k=self.n_neighbors)
-        return h
+        return float(h)
 
 
 class NNDistanceTrainSet(EvaluationFunction):
@@ -369,7 +369,7 @@ def plot_tsne(data, setname, savepath):
     plt.clf()
 
 
-def evaluate_model(images: np.ndarray, savepath, cfg) -> Dict[str, Any]:
+def evaluate_model(images: np.ndarray, savepath, model_cfg, cfg) -> Dict[str, Any]:
     """
     Main evaluation function that runs all configured evaluation functions.
 
@@ -381,23 +381,52 @@ def evaluate_model(images: np.ndarray, savepath, cfg) -> Dict[str, Any]:
     Returns:
         Dictionary of evaluation results
     """
-    # Ensure savepath is a Path object
-    savepath = Path(savepath)
-    model_name = cfg.model.name
+    try:
+        model_name = cfg.model.name
+    except:
+        model_name = "diffusion"
 
     results = dict()
-
+    
+    # Check if force re-evaluation is enabled
+    force_recompute = getattr(cfg, 'force_recompute', False)
+    
+    # Load existing stats to check if functions have already been run
+    stats_file_path = savepath / 'stats.yaml'
+    existing_stats = {}
+    if stats_file_path.exists() and not force_recompute:
+        try:
+            with open(stats_file_path, 'r', encoding='utf-8') as f:
+                existing_stats = yaml.safe_load(f) or {}
+        except yaml.YAMLError:
+            existing_stats = {}
+    elif force_recompute:
+        print("Force recompute enabled - will re-run all evaluation functions")
+    
     # calcul FOM
-    eval_fom = hydra.utils.instantiate(cfg.evaluation.fom)
-    fom = eval_fom(images, savepath, model_name, cfg)
+    fompath = (savepath / "fom.npy")
+    if fompath.exists():
+        fom = np.load(fompath)
+    else:
+        eval_fom = hydra.utils.instantiate(cfg.evaluation.fom)
+        fom = eval_fom(images, savepath, model_name, cfg)
 
-    for eval_fn_cfg in cfg.evaluation.functions:
+    for eval_fn_cfg in cfg.functions:
         eval_fn = hydra.utils.instantiate(eval_fn_cfg)
 
         if hasattr(eval_fn, '__name__'):
             fn_name = eval_fn.__name__
         else:
             fn_name = str(eval_fn_cfg.get('_target_', 'unknown'))
+
+        # Check if this function has already been computed
+        if fn_name in existing_stats and not force_recompute:
+            print(f"Skipping evaluation function: {fn_name} (already computed)")
+            if "metric" in eval_fn_cfg:
+                results[fn_name] = existing_stats[fn_name]
+            continue
+        elif fn_name in existing_stats and force_recompute:
+            print(f"Re-running evaluation function: {fn_name} (force recompute enabled)")
 
         print(f"Running evaluation function: {fn_name}")
 
@@ -407,23 +436,23 @@ def evaluate_model(images: np.ndarray, savepath, cfg) -> Dict[str, Any]:
             results[fn_name] = out
 
     
-    stats_file_path = savepath / 'stats.yaml'
     update_stats_yaml(stats_file_path, results)
 
     return results
 
 
-@hydra.main(version_base=None, config_path='config', config_name='evalgen')
+@hydra.main(version_base=None, config_path='config', config_name='config')
 def main(cfg):
-    for model_name, path, _ in cfg.datasets:
+    for ds in cfg.datasets:
+        path = ds.path
+        n_samples = ds.n_samples
         path = Path(path)
         assert "wandb" and "images" in next(os.walk(path))[1]
 
-        config_dir = os.path.join(path, "wandb/latest-run/files")
-        config_path = os.path.join(config_dir, "config.yaml")
-        images_path = os.path.join(path, "images/images.npy")
-        assert  os.path.exists(images_path)
-        assert os.path.exists(config_path)
+        config_path = path / "wandb/latest-run/files/config.yaml"
+        images_path = path / "images.npy"
+        assert  os.path.exists(images_path), ic(images_path)
+        assert os.path.exists(config_path), ic(config_path)
 
         with open(config_path, encoding="utf-8") as model_cfg:
             model_cfg = yaml.safe_load(model_cfg)
@@ -431,7 +460,7 @@ def main(cfg):
 
         images = np.load(images_path)
 
-        evaluate_model(images, savepath, model_cfg)
+        evaluate_model(images, path, model_cfg, cfg)
 
 
 if __name__ == "__main__":
