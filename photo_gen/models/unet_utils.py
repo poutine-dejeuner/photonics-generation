@@ -8,6 +8,15 @@ import matplotlib.pyplot as plt
 from einops import rearrange
 
 
+def compute_unet_channels(initial_n_channels: int, n_encode_layers: int):
+    channels = [initial_n_channels * 2**k for k in range(n_encode_layers + 1)]
+    
+    for k in range(2, n_encode_layers + 1):
+        decode_layer_dim = int(channels[-1] / 2 + channels[n_encode_layers + 1 - k])
+        channels.append(decode_layer_dim)
+    return channels
+
+
 def display_reverse(images: list, savepath: str, idx: int):
     fig, axes = plt.subplots(1, 10, figsize=(10, 1))
     for i, ax in enumerate(axes.flat):

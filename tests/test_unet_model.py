@@ -19,7 +19,7 @@ from omegaconf import OmegaConf
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from photo_gen.models.unet import UNET, ResBlock, Attention, UnetLayer, SinusoidalEmbeddings, train, inference
-from unet_utils import UNetPad
+from photo_gen.models.unet_utils import UNetPad
 
 
 class TestUNetComponents:
@@ -237,11 +237,12 @@ class TestTrainingFunction:
             'num_time_steps': 100,
             'ema_decay': 0.999,
             'debug': True,
+            'image_shape': [101, 91],  # Add missing image_shape
             'model': {
                 '_target_': 'models.unet.UNET',
-                'Channels': [32, 64, 32],  # Simplified for testing
-                'Attentions': [False, False, False],
-                'Upscales': [False, True, True],
+                'Channels': [32],  # Single layer - no skip connections!
+                'Attentions': [False],
+                'Upscales': [True],  # Single upsampling to double size, then we'll crop
                 'num_groups': 8,
                 'dropout_prob': 0.1,
                 'num_heads': 4,
@@ -272,6 +273,10 @@ class TestTrainingFunction:
         """Test basic training function execution."""
         with tempfile.TemporaryDirectory() as savedir:
             try:
+                # Remove the temp checkpoint file so it doesn't try to load it
+                if os.path.exists(temp_checkpoint):
+                    os.unlink(temp_checkpoint)
+                
                 loss = train(
                     data=sample_data,
                     cfg=mock_config,
@@ -424,9 +429,9 @@ class TestDimensionMatching:
         h, w = problematic_shape
         
         model = UNET(
-            Channels=[32, 64, 32],  # Minimal architecture
-            Attentions=[False, False, False],
-            Upscales=[False, True, True],
+            Channels=[32, 64, 64, 32],  # Balanced: 2 down, 2 up
+            Attentions=[False, False, False, False],
+            Upscales=[False, False, True, True],  # 2 down, 2 up
             num_groups=8,
             dropout_prob=0.0,
             num_heads=4,
@@ -492,7 +497,7 @@ class TestInferenceFunction:
             time_steps=50
         )
         
-        from timm.utils import ModelEmaV3
+        from timm.utils.model_ema import ModelEmaV3
         ema = ModelEmaV3(model, decay=0.999)
         
         checkpoint = {

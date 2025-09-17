@@ -11,7 +11,7 @@ import yaml
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, DictConfig
 import hydra
 from hydra import initialize, compose
 import infomeasure as im
@@ -53,6 +53,30 @@ class EvaluationFunction(ABC):
         """Return the name of this evaluation function."""
         return self.__class__.__name__
 
+
+class BinarizationLoss(EvaluationFunction):
+    """
+    Measure the binarization of the generated images (average distance to 0 or 1).
+    """
+    def __call__(self, images: np.ndarray, savepath: str, model_name: str,
+                 fom: Optional[np.ndarray] = None, cfg: Optional[OmegaConf] = None) -> float:
+        """
+        Measure the binarization of the generated images.
+
+        Args:
+            images: Generated images array of shape (N, C, H, W) or (N, H, W)
+            savepath: Directory to save results (unused)
+            model_name: Name of the model (unused)
+            fom: Figure of merit values (unused)
+            cfg: Configuration object (unused)
+
+        Returns:
+            Average binarization metric across all images
+        """
+        images = images.reshape(images.shape[0], -1)
+        binarization_metric = np.minimum(np.abs(images - 0), np.abs(images - 1))
+        avg_binarization = float(binarization_metric.mean())
+        return avg_binarization
 
 class VisualizeGeneratedSamples(EvaluationFunction):
     """Create a grid visualization of generated samples and save it."""
@@ -214,6 +238,40 @@ class NNDistanceTrainSet(EvaluationFunction):
         return distances_dict
 
 
+def nn_distance_to_train_ds(ds_name: str,
+                            gen_ds: torch.Tensor | np.ndarray,
+                            train_ds: torch.Tensor | np.ndarray,
+                            savepath: str)->dict[str, float]:
+    """
+        For each element in ds1, compute the distance to the nearest element in
+        ds2.
+    """
+    if isinstance(gen_ds, np.ndarray):
+        gen_ds = torch.tensor(gen_ds)
+    if isinstance(train_ds, np.ndarray):
+        train_ds = torch.tensor(train_ds)
+
+    distances = []
+    for x in gen_ds:
+        min_dist = float('inf')
+        for y in train_ds:
+            dist = torch.norm(x - y)
+            if dist < min_dist:
+                min_dist = dist
+
+        distances.append(min_dist)
+    # make nn distance histogram
+    distances = tonumpy(torch.stack(distances))
+    plt.hist(distances, bins=100, density=True, label=ds_name, alpha=0.5)
+    plt.title('Nearest training set neighbor distances')
+    plt.savefig(os.path.join(savepath, 'nn_distance_histogram.png'))
+    plt.legend()
+    plt.close()
+
+    results = {"mean": distances.mean().item(), "std": distances.std().item()}
+    return results
+
+    
 class PairwiseDistanceEntropy(EvaluationFunction):
     """Compute entropy of pairwise distances between generated images."""
     
@@ -276,100 +334,7 @@ class ImageAverageEntropy(EvaluationFunction):
         return float(entropy_value)
 
 
-def nn_distance_to_train_ds(ds_name: str,
-                            gen_ds: torch.Tensor | np.ndarray,
-                            train_ds: torch.Tensor | np.ndarray,
-                            savepath: str)->dict[str, float]:
-    """
-        For each element in ds1, compute the distance to the nearest element in
-        ds2.
-    """
-    if isinstance(gen_ds, np.ndarray):
-        gen_ds = torch.tensor(gen_ds)
-    if isinstance(train_ds, np.ndarray):
-        train_ds = torch.tensor(train_ds)
-
-    distances = []
-    for x in gen_ds:
-        min_dist = float('inf')
-        for y in train_ds:
-            dist = torch.norm(x - y)
-            if dist < min_dist:
-                min_dist = dist
-
-        distances.append(min_dist)
-    # make nn distance histogram
-    distances = tonumpy(torch.stack(distances))
-    plt.hist(distances, bins=100, density=True, label=ds_name, alpha=0.5)
-    plt.title('Nearest training set neighbor distances')
-    plt.savefig(os.path.join(savepath, 'nn_distance_histogram.png'))
-    plt.legend()
-    plt.close()
-
-    results = {"mean": distances.mean().item(), "std": distances.std().item()}
-    return results
-
-
-def plot_umap(data, setname, savepath):
-    import umap
-
-    data = data[0]
-    reducer = umap.UMAP()
-    data = data.reshape(data.shape[0], -1)
-    embedding = reducer.fit_transform(data)
-    plt.scatter(
-        embedding[:, 0],
-        embedding[:, 1],
-    )  # c=[sns.color_palette()[x] for x in data.classes]
-    plt.gca().set_aspect('equal', 'datalim')
-    plt.title(f'UMAP projection of {setname}', fontsize=24)
-    plt.savefig(savepath)
-    plt.clf()
-
-
-def plot_umap_with_images(data, setname, savepath):
-    import umap
-    from matplotlib.offsetbox import OffsetImage, AnnotationBbox
-
-    data = data[0]
-    images = data
-    reducer = umap.UMAP()
-    data = data.reshape(data.shape[0], -1)
-    embedding = reducer.fit_transform(data)
-    fig, ax = plt.subplots()
-    for i in range(embedding.shape[0]):
-        xi = embedding[i, 0]
-        yi = embedding[i, 1]
-        img = images[i]
-        imagebox = OffsetImage(img, zoom=0.1)
-        ab = AnnotationBbox(imagebox, (xi, yi), frameon=False)
-        ax.add_artist(ab)
-    # plt.scatter(
-    #     embedding[:, 0],
-    #     embedding[:, 1],
-    # )  # c=[sns.color_palette()[x] for x in data.classes]
-    plt.gca().set_aspect('equal', 'datalim')
-    plt.title(f'UMAP projection of {setname}', fontsize=24)
-    plt.savefig(savepath)
-    plt.clf()
-
-
-def plot_tsne(data, setname, savepath):
-    from sklearn.manifold import TSNE
-
-    data = data[0]
-    data = data.reshape(data.shape[0], -1)
-    tsne = TSNE(n_components=2, learning_rate='auto',
-                init='random', perplexity=3)
-    embedding = tsne.fit_transform(data)
-    plt.scatter(embedding[:, 0],
-                embedding[:, 1])
-    plt.title(f'TSNE projection of {setname}')
-    plt.savefig(savepath)
-    plt.clf()
-
-
-def evaluate_model(images: np.ndarray, savepath, model_cfg, cfg) -> Dict[str, Any]:
+def evaluate_model(images: np.ndarray, savepath: Path, cfg: DictConfig, **kwargs) -> Dict[str, Any]:
     """
     Main evaluation function that runs all configured evaluation functions.
 
@@ -411,13 +376,13 @@ def evaluate_model(images: np.ndarray, savepath, model_cfg, cfg) -> Dict[str, An
         eval_fom = hydra.utils.instantiate(cfg.evaluation.fom)
         fom = eval_fom(images, savepath, model_name, cfg)
 
-    for eval_fn_cfg in cfg.functions:
+    for eval_fn_cfg in cfg.evaluation.functions:
         eval_fn = hydra.utils.instantiate(eval_fn_cfg)
 
         if hasattr(eval_fn, '__name__'):
             fn_name = eval_fn.__name__
         else:
-            fn_name = str(eval_fn_cfg.get('_target_', 'unknown'))
+            fn_name = str(eval_fn_cfg.get('_target_', 'unknown')).split('.')[-1]
 
         # Check if this function has already been computed
         if fn_name in existing_stats and not force_recompute:
@@ -441,7 +406,7 @@ def evaluate_model(images: np.ndarray, savepath, model_cfg, cfg) -> Dict[str, An
     return results
 
 
-@hydra.main(version_base=None, config_path='config', config_name='config')
+@hydra.main(version_base=None, config_path='../config/evaluation', config_name='config')
 def main(cfg):
     for ds in cfg.datasets:
         path = ds.path

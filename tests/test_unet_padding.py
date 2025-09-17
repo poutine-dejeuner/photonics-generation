@@ -15,7 +15,7 @@ import os
 # Add the project directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from unet_utils import UNetPad, unet_pad_fun
+from photo_gen.models.unet_utils import UNetPad, unet_pad_fun
 
 
 class TestUNetPad:

@@ -6,14 +6,11 @@ import os
 import datetime
 
 import numpy as np
-from einops import rearrange
-from torch.utils.data import DataLoader, TensorDataset
 import hydra
 from omegaconf import OmegaConf
 
 from photo_gen.evaluation.evaluation import evaluate_model
-
-from utils.utils import make_wandb_run
+from photo_gen.utils.utils import make_wandb_run
 
 from icecream import ic, install
 

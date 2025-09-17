@@ -10,7 +10,6 @@ from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from photo_gen.models.evaluation import get_evaluation_function
 import random
 from typing import Tuple, Optional
 from photo_gen.models.utils import set_seed

@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 from einops import rearrange
-from typing import List
+from typing import List, Optional, Union
 import random
 import math
 import pdb
@@ -286,36 +286,3 @@ def inference(cfg,
     np.save(os.path.join(savepath, "images.npy"), samples)
 
     return samples
-
-
-def main():
-    batch_size = 2
-    x = torch.randn(batch_size, 1, 101, 91).cuda()
-    t = torch.randint(0,1000,(batch_size,)).cuda()
-    #t = [random.randint(0, 999) for _ in range(16)]
-    model = UNET().cuda()
-
-    D = model.num_layers // 2
-    assert D == 3, model.num_layers
-
-    pad_fn = UNetPad(x, D)
-    ic(x.shape)
-    x = pad_fn(x)
-    ic(x.shape)
-
-    padded = np.array(x.shape[-2:])
-    assert padded[0] % 2**D == 0
-    assert padded[1] % 2**D == 0
-    ic(padded/2**D)
-
-    y = model(x,t)
-    ic(y.shape)
-    assert y.shape == x.shape
-
-    n_params = 0
-    for p in model.parameters():
-        n_params += p.numel()
-    print(n_params)
-
-if __name__ == '__main__':
-    main()

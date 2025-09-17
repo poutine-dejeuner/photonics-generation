@@ -1,5 +1,0 @@
-defaults:
-  - _self_
-  - functions: complete
-
-# functions: []  # This will be populated by the functions configs 
