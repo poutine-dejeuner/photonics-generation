@@ -8,7 +8,9 @@ _target_: photo_gen.models.unet.UNET
 # Optimized architecture - reduced channels for 101x91 images
 input_channels: 1
 output_channels: 1
-Channels: [32, 64, 128, 256, 128, 64]  # Much smaller than default [64, 128, 256, 512, 512, 384]
+# Channels: [32, 64, 128, 256, 256, 192]  # Much smaller than default [64, 128, 256, 512, 512, 384]
+first_channels: 32
+num_layers: 6
 Attentions: [false, false, true, false, true, false]  # Reduced attention layers
 Upscales: [false, false, false, true, true, true]
 num_groups: 8  # Reduced from 32 for smaller channels

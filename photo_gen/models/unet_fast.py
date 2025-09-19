@@ -8,13 +8,15 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 import hydra
 from timm.utils.model_ema import ModelEmaV3
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 
-from photo_gen.models.utils import DDPM_Scheduler, set_seed
-from photo_gen.utils.unet_utils import UNetPad
+from photo_gen.utils.utils import save_checkpoint
+from photo_gen.utils.unet_utils import UNetPad, DDPM_Scheduler
+
+from icecream import ic
 
 
-def train_optimized(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir: os.PathLike, run=None):
+def train_fast(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir: os.PathLike, run=None):
     """
     Optimized training function with mixed precision, larger batch sizes, and memory optimizations.
     """
@@ -49,14 +51,14 @@ def train_optimized(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir
         data = data.unsqueeze(1)
     
     # Model setup
-    scheduler = DDPM_Scheduler(num_time_steps=num_time_steps)
+    scheduler = DDPM_Scheduler(num_time_steps=num_time_steps, device=device)
     model = hydra.utils.instantiate(cfg.model)
     model = model.to(device)
     
-    # Model compilation for additional speedup (PyTorch 2.0+)
-    if compile_model and hasattr(torch, 'compile'):
-        print("Compiling model with torch.compile")
-        model = torch.compile(model)
+    # # Model compilation for additional speedup (PyTorch 2.0+)
+    # if compile_model and hasattr(torch, 'compile'):
+    #     print("Compiling model with torch.compile")
+    #     model = torch.compile(model)
     
     depth = model.num_layers // 2
     pad_fn = UNetPad(data, depth=depth)
@@ -68,7 +70,7 @@ def train_optimized(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir
         batch_size=batch_size, 
         shuffle=True, 
         drop_last=True,
-        num_workers=8,  # Increased from 4
+        num_workers=1,
         pin_memory=True,  # Speed up CPU->GPU transfer
         persistent_workers=True  # Keep workers alive between epochs
     )
@@ -82,6 +84,7 @@ def train_optimized(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir
     )
     
     # Learning rate scheduler
+    assert n_epochs > 0 and len(train_loader) > 0, ic(n_epochs, len(train_loader))  
     scheduler_lr = optim.lr_scheduler.OneCycleLR(
         optimizer,
         max_lr=lr * 2,
@@ -90,12 +93,13 @@ def train_optimized(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir
     )
     
     # Mixed precision scaler
-    scaler = GradScaler() if use_mixed_precision else None
+    scaler = GradScaler(device=str(device)) if use_mixed_precision else None
     
     ema = ModelEmaV3(model, decay=ema_decay)
     
     # Load checkpoint if exists
     start_epoch = 0
+    ic(checkpoint_path)
     if checkpoint_path is not None and os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, weights_only=True)
         model.load_state_dict(checkpoint['weights'])
@@ -132,7 +136,7 @@ def train_optimized(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir
             
             # Forward pass with mixed precision
             if use_mixed_precision:
-                with autocast():
+                with autocast(device_type=str(device)):
                     output = model(x_noisy, t)
                     loss = criterion(output, e) / gradient_accumulation_steps
                 
@@ -180,19 +184,11 @@ def train_optimized(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir
         
         # Save checkpoint more frequently for long training
         if (epoch + 1) % 50 == 0 or epoch == n_epochs - 1:
-            checkpoint = {
-                'weights': model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'ema': ema.state_dict(),
-                'epoch': epoch + 1
-            }
-            if scaler:
-                checkpoint['scaler'] = scaler.state_dict()
-            torch.save(checkpoint, checkpoint_path)
-            print(f"Checkpoint saved at epoch {epoch + 1}")
-        
+                save_checkpoint(model, optimizer, ema, epoch, scaler, checkpoint_path)
         if cfg.debug:
             break  # Only run one epoch in debug mode
+
+    save_checkpoint(model, optimizer, ema, epoch, scaler, checkpoint_path)
     
     return total_loss
 

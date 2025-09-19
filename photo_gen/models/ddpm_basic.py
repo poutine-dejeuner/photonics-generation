@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from einops import rearrange
 import numpy as np
-import random
 import math
 
 def sinusoidalEmbeddings(time_steps, embed_dim):

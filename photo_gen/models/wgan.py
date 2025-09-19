@@ -12,7 +12,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
 
-from photo_gen.models.utils import set_seed
+from photo_gen.utils.utils import set_seed
 from photo_gen.utils.parameter_counting import count_parameters
 
 

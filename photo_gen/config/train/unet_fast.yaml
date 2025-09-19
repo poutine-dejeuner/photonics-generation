@@ -1,5 +1,5 @@
 # Optimized UNet training configuration
-_target_: photo_gen.models.unet_optimized.train_optimized
+_target_: photo_gen.models.unet_fast.train_fast
 _partial_: true
 
 # Training optimizations enabled by default

@@ -372,6 +372,9 @@ def evaluate_model(images: np.ndarray, savepath: Path, cfg: DictConfig, **kwargs
     fompath = (savepath / "fom.npy")
     if fompath.exists():
         fom = np.load(fompath)
+        if fom.shape != images.shape:
+            eval_fom = hydra.utils.instantiate(cfg.evaluation.fom)
+            fom = eval_fom(images, savepath, model_name, cfg)
     else:
         eval_fom = hydra.utils.instantiate(cfg.evaluation.fom)
         fom = eval_fom(images, savepath, model_name, cfg)

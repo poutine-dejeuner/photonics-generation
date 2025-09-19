@@ -4,6 +4,7 @@ This script follows the same hydra configuration structure as train4.py for cons
 """
 import os
 import datetime
+from pathlib import Path
 
 import numpy as np
 import hydra
@@ -24,30 +25,30 @@ def main(cfg):
     OmegaConf.set_struct(cfg, False)
 
     savedir = 'nanophoto/comparison/experiments/'
-    savedir = os.path.join(os.environ.get("SCRATCH", "./"), savedir)
+    savedir = Path(os.environ.get("SCRATCH")) / savedir
 
     if cfg.debug:
-        savedir = os.path.join(savedir, 'debug')
+        savedir = savedir / 'debug'
         cfg.n_to_generate = 16
     else:
         jobid = os.environ.get("SLURM_JOB_ID", "local_run")
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        savedir = os.path.join(savedir, f"{jobid}_{timestamp}")
+        savedir = savedir / f"{jobid}_{timestamp}"
 
     model_name = cfg.model.name
-    savedir = os.path.join(savedir, model_name)
+    savedir = savedir / model_name
 
     if cfg.inference_only:
         checkpoint_path = os.path.expanduser(cfg.checkpoint_load_path)
     else:
-        checkpoint_path = os.path.join(savedir, "checkpoint.pt")
+        checkpoint_path = savedir / "checkpoint.pt"
 
     train_fn = hydra.utils.instantiate(cfg.train)
     inference_fn = hydra.utils.instantiate(cfg.model.inference)
 
     os.makedirs(savedir, exist_ok=True)
     datapath = os.path.expanduser(cfg.data_path)
-    images_savepath = os.path.join(savedir, "images")
+    images_savepath = savedir / "images"
     os.makedirs(images_savepath, exist_ok=True)
 
     data = np.load(datapath)
@@ -63,7 +64,7 @@ def main(cfg):
 
     if cfg.debug:
         modcfg.n_to_generate = 1
-        modcfg.train_set_size = 16
+        modcfg.train_set_size = 32
         modcfg.n_epochs = 1
 
     n_samples = data.shape[0] if modcfg.train_set_size == -1 else modcfg.train_set_size 
@@ -83,8 +84,10 @@ def main(cfg):
     if data.max() > 1.0:
         data = (data - data.min()) / (data.max() - data.min())
         print(f"Normalized data to range [0, 1]")
-
-    modcfg.n_epochs = int(modcfg.n_compute_steps / n_samples)
+    
+    n_epochs = int(modcfg.n_compute_steps / n_samples)
+    assert n_epochs > 0, ic(n_epochs, modcfg.n_compute_steps, n_samples)
+    modcfg.n_epochs = n_epochs
 
     # Log model configuration if training (parameter estimation removed due to missing dependencies)
     if cfg.inference_only is False:
@@ -110,8 +113,8 @@ def main(cfg):
         if cfg.logger:
             group_name = f"comparison_{model_name}"
             run_name = f"{model_name}_{os.environ.get('SLURM_JOB_ID', 'local')}"
-            run = make_wandb_run(config=dict(cfg), savepath=savedir,
-                                 group=group_name, run_name=run_name)
+            run = make_wandb_run(config=dict(cfg), data_path=savedir,
+                                 group_name=group_name, run_name=run_name)
 
         train_fn(data=data, checkpoint_path=checkpoint_path,
                  savedir=savedir, run=run, cfg=cfg)
@@ -123,6 +126,16 @@ def main(cfg):
 
     if cfg.logger:
         run.log(results)
+
+    # if debuggin, ask the user if they want to delete the savedir
+    if cfg.debug:
+        delete = input(f"Debug mode: Delete savedir {savedir}? (y/n): ")
+        if delete.lower() == 'y':
+            import shutil
+            shutil.rmtree(savedir)
+            print(f"Deleted {savedir}")
+        else:
+            print(f"Kept {savedir}")
 
     return
 
