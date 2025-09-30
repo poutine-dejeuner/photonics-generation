@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 import hydra
 from omegaconf import DictConfig
 
-from photo_gen.train_comparison import main as train_main
+from photo_gen.train import main as train_main
 
 
 @hydra.main(version_base="1.1", config_path="../../config", config_name="comparison_config")

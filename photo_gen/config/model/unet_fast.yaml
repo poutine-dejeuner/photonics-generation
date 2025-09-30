@@ -21,8 +21,6 @@ time_steps: 1000
 # Training parameters optimized for speed
 seed: -1
 lr: 0.0001  # Slightly higher learning rate
-train_set_size: -1
-n_compute_steps: 1_000_000  # Reduced from 2.5M
 batch_size: 32  # Increased from 8 for better GPU utilization
 num_time_steps: 1000
 ema_decay: 0.9999

@@ -13,11 +13,10 @@ import torch
 import matplotlib.pyplot as plt
 from omegaconf import OmegaConf, DictConfig
 import hydra
-from hydra import initialize, compose
 import infomeasure as im
 
 from photo_gen.utils.utils import load_wandb_config
-from photo_gen.evaluation.eval_utils import (update_stats_yaml, tonumpy,)
+from photo_gen.evaluation.eval_utils import (update_stats_yaml, tonumpy, find_files)
 from photo_gen.evaluation.meep_compute_fom import compute_FOM_parallele
 
 from icecream import ic
@@ -180,7 +179,7 @@ class FOM(EvaluationFunction):
             computed_fom = compute_FOM_parallele(images)
 
         np.save(os.path.join(savepath, "fom.npy"), computed_fom)
-        return float(computed_fom.mean()), float(computed_fom.std())
+        return computed_fom
 
 
 def pca_dim_reduction_entropy(images, dim, n_neighbors):
@@ -369,17 +368,24 @@ def evaluate_model(images: np.ndarray, savepath: Path, cfg: DictConfig, **kwargs
         print("Force recompute enabled - will re-run all evaluation functions")
     
     # calcul FOM
-    fompath = (savepath / "fom.npy")
+    
+    fompath = find_files(savepath, ["fom.npy"])[0]
     if fompath.exists():
         fom = np.load(fompath)
-        if fom.shape != images.shape:
-            eval_fom = hydra.utils.instantiate(cfg.evaluation.fom)
+        if fom.shape[0] != images.shape[0]:
+            print(f"FOM file found but wrong shape for images.npy file, recomputing FOM, fom shape {fom.shape}, image shape {images.shape}")
+            eval_cfg = get_evaluation_config(cfg)
+            eval_fom = hydra.utils.instantiate(eval_cfg.fom)
             fom = eval_fom(images, savepath, model_name, cfg)
     else:
-        eval_fom = hydra.utils.instantiate(cfg.evaluation.fom)
+        eval_cfg = get_evaluation_config(cfg)
+        eval_fom = hydra.utils.instantiate(eval_cfg.fom)
         fom = eval_fom(images, savepath, model_name, cfg)
+    results["fom mean"] = fom.mean().item()
+    results["fom std"] = fom.std().item()
 
-    for eval_fn_cfg in cfg.evaluation.functions:
+    eval_cfg = get_evaluation_config(cfg)
+    for eval_fn_cfg in eval_cfg.functions:
         eval_fn = hydra.utils.instantiate(eval_fn_cfg)
 
         if hasattr(eval_fn, '__name__'):
@@ -409,18 +415,30 @@ def evaluate_model(images: np.ndarray, savepath: Path, cfg: DictConfig, **kwargs
     return results
 
 
-@hydra.main(version_base=None, config_path='../config/evaluation', config_name='config')
+def get_evaluation_config(cfg):
+    """Helper to get evaluation config whether it's nested or at root level."""
+    if hasattr(cfg, 'evaluation'):
+        return cfg.evaluation
+    else:
+        return cfg
+
+@hydra.main(version_base=None, config_path='../config/', config_name='config')
 def main(cfg):
-    for ds in cfg.datasets:
+    for ds in cfg.evaluation.datasets:
         path = ds.path
         n_samples = ds.n_samples
         path = Path(path)
-        assert "wandb" and "images" in next(os.walk(path))[1]
+        if path.name == "images.npy":
+            path = path.parent.parent
 
-        config_path = path / "wandb/latest-run/files/config.yaml"
-        images_path = path / "images.npy"
-        assert  os.path.exists(images_path), ic(images_path)
-        assert os.path.exists(config_path), ic(config_path)
+        filenames_list = ['config.yaml', 'images.npy']
+        files = find_files(path, filenames_list)
+        if files is None:
+            print(f"Skipping dataset {path} as required files not found")
+            continue
+
+        config_path = files[filenames_list.index('config.yaml')]
+        images_path = files[filenames_list.index('images.npy')]
 
         with open(config_path, encoding="utf-8") as model_cfg:
             model_cfg = yaml.safe_load(model_cfg)
@@ -428,7 +446,7 @@ def main(cfg):
 
         images = np.load(images_path)
 
-        evaluate_model(images, path, model_cfg, cfg)
+        evaluate_model(images, path, cfg)
 
 
 if __name__ == "__main__":

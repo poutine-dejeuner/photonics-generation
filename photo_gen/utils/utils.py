@@ -1,4 +1,5 @@
 import os
+import random
 from typing import List, Callable, Any, Union, Tuple
 import json
 import functools
@@ -11,17 +12,6 @@ import wandb
 import matplotlib.pyplot as plt
 from einops import rearrange
 from omegaconf import OmegaConf
-
-
-def make_wandb_run(config, savepath, run_name, group):
-    wandb_dir = os.path.join(savepath, "wandb")
-    wandb_dir = os.path.expanduser(savepath)
-    if not os.path.isdir(wandb_dir):
-        os.makedirs(wandb_dir)
-    print(run_name)
-    run = wandb.init(entity="nanophoto", project='nanophoto', config=config,
-                     group=group, name=run_name, dir=wandb_dir)
-    return run
 
 
 def load_wandb_config(raw_cfg: dict):
@@ -507,7 +497,10 @@ def get_model(config):
 
 
 def normalize(x: torch.Tensor | np.ndarray):
-    return (x - x.min()) / (x.max() - x.min())
+    if x.min()<0 or x.max()>1 and x.min() != x.max():
+        return (x - x.min()) / (x.max() - x.min())
+    else:
+        return x
 
 
 class AttrDict(dict):
@@ -516,12 +509,59 @@ class AttrDict(dict):
         self.__dict__ = self
 
 
-def make_wandb_run(config, data_path, group_name, run_name):
-    wandb_dir = os.path.join(data_path, "wandb")
+def make_wandb_run(cfg, savedir):
+    """
+    Create a wandb run using configuration parameters.
+    
+    Args:
+        cfg: Configuration object containing logger settings and model info
+        savedir: Path where wandb logs will be stored
+    """
+    model_name = cfg.model.name
+    job_id = os.environ.get('SLURM_JOB_ID', 'local')
+    
+    # Format group and run names using config templates
+    group_name = cfg.logger.group_name_template.format(model_name=model_name)
+    run_name = cfg.logger.run_name_template.format(model_name=model_name, job_id=job_id)
+    
+    wandb_dir = os.path.join(savedir, "wandb")
     wandb_dir = os.path.expanduser(wandb_dir)
     if not os.path.isdir(wandb_dir):
-        os.mkdir(wandb_dir)
-    print(run_name)
-    run = wandb.init(project='nanophoto', config=config, entity="nanophoto",
-                     group=group_name, name=run_name, dir=wandb_dir)
+        os.makedirs(wandb_dir, exist_ok=True)
+    
+    print(f"Starting wandb run: {run_name}")
+    run = wandb.init(
+        project=cfg.logger.project, 
+        config=dict(cfg), 
+        entity=cfg.logger.entity,
+        group=group_name, 
+        name=run_name, 
+        dir=wandb_dir
+    )
     return run
+
+
+def debug_cleanup(savedir, interactive=True):
+    """
+    Handle cleanup of debug directories.
+    
+    Args:
+        savedir: Path to the directory to potentially delete
+        interactive: If True, ask user for confirmation. If False, don't delete.
+    
+    Returns:
+        bool: True if directory was deleted, False otherwise
+    """
+    if not interactive:
+        print(f"Debug mode: Kept {savedir}")
+        return False
+        
+    delete = input(f"Debug mode: Delete savedir {savedir}? (y/n): ")
+    if delete.lower() == 'y':
+        import shutil
+        shutil.rmtree(savedir)
+        print(f"Deleted {savedir}")
+        return True
+    else:
+        print(f"Kept {savedir}")
+        return False

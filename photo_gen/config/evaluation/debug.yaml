@@ -1,6 +1,6 @@
 defaults:
   - _self_
   - fom: debug
-  - functions: complete
+  - functions: debug
 
 functions: []  # This will be populated by the functions configs

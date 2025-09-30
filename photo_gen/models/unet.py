@@ -1,3 +1,4 @@
+import sys
 import os
 import warnings
 from typing import List, Optional, Union
@@ -41,9 +42,10 @@ class ResBlock(nn.Module):
         r = self.dropout(r)
         r = self.conv2(self.relu(self.gnorm2(r)))
         return r + x
-    
+
+
 class Attention(nn.Module):
-    def __init__(self, C: int, num_heads:int , dropout_prob: float):
+    def __init__(self, C: int, num_heads: int, dropout_prob: float):
         super().__init__()
         self.proj1 = nn.Linear(C, C*3)
         self.proj2 = nn.Linear(C, C)
@@ -55,29 +57,35 @@ class Attention(nn.Module):
         x = rearrange(x, 'b c h w -> b (h w) c')
         x = self.proj1(x)
         x = rearrange(x, 'b L (C H K) -> K b H L C', K=3, H=self.num_heads)
-        q,k,v = x[0], x[1], x[2]
-        x = F.scaled_dot_product_attention(q,k,v, is_causal=False, dropout_p=self.dropout_prob)
+        q, k, v = x[0], x[1], x[2]
+        x = F.scaled_dot_product_attention(
+            q, k, v, is_causal=False, dropout_p=self.dropout_prob)
         x = rearrange(x, 'b H (h w) C -> b h w (C H)', h=h, w=w)
         x = self.proj2(x)
         return rearrange(x, 'b h w C -> b C h w')
 
+
 class UnetLayer(nn.Module):
-    def __init__(self, 
-            upscale: bool, 
-            attention: bool, 
-            num_groups: int, 
-            dropout_prob: float,
-            num_heads: int,
-            C: int):
+    def __init__(self,
+                 upscale: bool,
+                 attention: bool,
+                 num_groups: int,
+                 dropout_prob: float,
+                 num_heads: int,
+                 C: int):
         super().__init__()
-        self.ResBlock1 = ResBlock(C=C, num_groups=num_groups, dropout_prob=dropout_prob)
-        self.ResBlock2 = ResBlock(C=C, num_groups=num_groups, dropout_prob=dropout_prob)
+        self.ResBlock1 = ResBlock(
+            C=C, num_groups=num_groups, dropout_prob=dropout_prob)
+        self.ResBlock2 = ResBlock(
+            C=C, num_groups=num_groups, dropout_prob=dropout_prob)
         if upscale:
-            self.conv = nn.ConvTranspose2d(C, C//2, kernel_size=4, stride=2, padding=1)
+            self.conv = nn.ConvTranspose2d(
+                C, C//2, kernel_size=4, stride=2, padding=1)
         else:
             self.conv = nn.Conv2d(C, C*2, kernel_size=3, stride=2, padding=1)
         if attention:
-            self.attention_layer = Attention(C, num_heads=num_heads, dropout_prob=dropout_prob)
+            self.attention_layer = Attention(
+                C, num_heads=num_heads, dropout_prob=dropout_prob)
 
     def forward(self, x, embeddings):
         x = self.ResBlock1(x, embeddings)
@@ -86,11 +94,13 @@ class UnetLayer(nn.Module):
         x = self.ResBlock2(x, embeddings)
         return self.conv(x), x
 
+
 class SinusoidalEmbeddings(nn.Module):
-    def __init__(self, time_steps:int, embed_dim: int, device: device):
+    def __init__(self, time_steps: int, embed_dim: int, device: device):
         super().__init__()
         position = torch.arange(time_steps).unsqueeze(1).float()
-        div = torch.exp(torch.arange(0, embed_dim, 2).float() * -(math.log(10000.0) / embed_dim))
+        div = torch.exp(torch.arange(0, embed_dim, 2).float()
+                        * -(math.log(10000.0) / embed_dim))
         embeddings = torch.zeros(time_steps, embed_dim, requires_grad=False)
         embeddings[:, 0::2] = torch.sin(position * div)
         embeddings[:, 1::2] = torch.cos(position * div)
@@ -100,21 +110,23 @@ class SinusoidalEmbeddings(nn.Module):
         embeds = self.embeddings[t]
         return embeds[:, :, None, None]
 
+
 class UNET(nn.Module):
     def __init__(self,
-            Channels: List|None = None, #[64, 128, 256, 512, 512, 384],
-            Attentions: List = [False, True, False, False, False, True],
-            first_channels: int|None = None,
-            num_layers: int|None = None,
-            Upscales: List = [False, False, False, True, True, True],
-            num_groups: int = 32,
-            dropout_prob: float = 0.0,
-            num_heads: int = 8,
-            input_channels: int = 1,
-            output_channels: int = 1,
-            device: device = 'cuda',
-            time_steps: int = 1000,
-            **kwargs):
+                 # [64, 128, 256, 512, 512, 384],
+                 Channels: List | None = None,
+                 Attentions: List = [False, True, False, False, False, True],
+                 first_channels: int | None = None,
+                 num_layers: int | None = None,
+                 Upscales: List = [False, False, False, True, True, True],
+                 num_groups: int = 32,
+                 dropout_prob: float = 0.0,
+                 num_heads: int = 8,
+                 input_channels: int = 1,
+                 output_channels: int = 1,
+                 device: device = 'cuda',
+                 time_steps: int = 1000,
+                 **kwargs):
         super().__init__()
         if Channels is None:
             Channels = compute_unet_channels(first_channels, num_layers)
@@ -124,12 +136,16 @@ class UNET(nn.Module):
             first_channels = num_groups
             Channels = compute_unet_channels(first_channels, num_layers)
         self.num_layers = len(Channels)
-        self.shallow_conv = nn.Conv2d(input_channels, Channels[0], kernel_size=3, padding=1)
+        self.shallow_conv = nn.Conv2d(
+            input_channels, Channels[0], kernel_size=3, padding=1)
         out_channels = (Channels[-1]//2)+Channels[0]
-        self.late_conv = nn.Conv2d(out_channels, out_channels//2, kernel_size=3, padding=1)
-        self.output_conv = nn.Conv2d(out_channels//2, output_channels, kernel_size=1)
+        self.late_conv = nn.Conv2d(
+            out_channels, out_channels//2, kernel_size=3, padding=1)
+        self.output_conv = nn.Conv2d(
+            out_channels//2, output_channels, kernel_size=1)
         self.relu = nn.ReLU(inplace=True)
-        self.embeddings = SinusoidalEmbeddings(time_steps=time_steps, embed_dim=max(Channels), device=device)
+        self.embeddings = SinusoidalEmbeddings(
+            time_steps=time_steps, embed_dim=max(Channels), device=device)
         for i in range(self.num_layers):
             layer = UnetLayer(
                 upscale=Upscales[i],
@@ -151,7 +167,8 @@ class UNET(nn.Module):
             residuals.append(r)
         for i in range(self.num_layers//2, self.num_layers):
             layer = getattr(self, f'Layer{i+1}')
-            x = torch.concat((layer(x, embeddings)[0], residuals[self.num_layers-i-1]), dim=1)
+            x = torch.concat(
+                (layer(x, embeddings)[0], residuals[self.num_layers-i-1]), dim=1)
         return self.output_conv(self.relu(self.late_conv(x)))
 
 
@@ -202,12 +219,13 @@ def train(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir: os.PathL
 
     for i in range(n_epochs):
         total_loss = 0
-        for bidx, [x] in enumerate(tqdm(train_loader, desc=f"Epoch {i+1}/{n_epochs}")):
+        for bidx, [x] in enumerate(tqdm(train_loader, desc=f"Epoch {i+1}/{n_epochs}",
+                                        disable=not sys.stdout.isatty())):
             x = x.cuda()
             x = pad_fn(x)
-            t = torch.randint(0,num_time_steps,(batch_size,))
+            t = torch.randint(0, num_time_steps, (batch_size,))
             e = torch.randn_like(x, requires_grad=False)
-            a = scheduler.alpha[t].view(batch_size,1,1,1).cuda()
+            a = scheduler.alpha[t].view(batch_size, 1, 1, 1).cuda()
             x = (torch.sqrt(a)*x) + (torch.sqrt(1-a)*e)
             output = model(x, t)
             optimizer.zero_grad()
@@ -243,7 +261,7 @@ def inference(cfg,
               ):
     num_time_steps = cfg.model.num_time_steps
     ema_decay = cfg.model.ema_decay
-    n_images = cfg.n_images if cfg.debug is False else 4
+    n_images = cfg.n_to_generate if cfg.debug is False else 4
     image_shape = tuple(cfg.image_shape)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(device)
@@ -266,7 +284,7 @@ def inference(cfg,
     with torch.no_grad():
         samples = []
         model = ema.module.eval()
-        for i in tqdm(range(n_images)):
+        for i in tqdm(range(n_images), disable=not sys.stdout.isatty()):
             z = torch.randn((1, 1,)+image_shape, device=device)
             z = padding_fn(z)
 

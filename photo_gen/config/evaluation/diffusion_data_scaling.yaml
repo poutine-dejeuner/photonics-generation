@@ -5,6 +5,5 @@ defaults:
   - _self_
   - fom: meep
   - functions: complete
-  - datasets: diffusion_data_scaling
-
-# functions: []  # This will be populated by the functions configs 
+  - datasets: diffusion_data_scaling2
+ 
