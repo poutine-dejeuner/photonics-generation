@@ -1,22 +1,25 @@
 import os
+import warnings
+from typing import List, Optional, Union
+import random
+import math
+import pdb
+from tqdm import tqdm
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import numpy as np
-from einops import rearrange
-from typing import List
-import random
-import math
-import pdb
 from torch import batch_norm, device
 from torch.utils.data import DataLoader, TensorDataset
-from tqdm import tqdm
+import numpy as np
+from einops import rearrange
 import hydra
 from timm.utils.model_ema import ModelEmaV3
 
-from photo_gen.models.utils import DDPM_Scheduler, set_seed
-from photo_gen.utils.unet_utils import UNetPad, display_reverse
+from photo_gen.utils.utils import set_seed
+from photo_gen.utils.unet_utils import (UNetPad, display_reverse,
+                                        compute_unet_channels, DDPM_Scheduler)
 from photo_gen.evaluation.meep_compute_fom import compute_FOM_parallele
 
 from icecream import ic
@@ -99,8 +102,10 @@ class SinusoidalEmbeddings(nn.Module):
 
 class UNET(nn.Module):
     def __init__(self,
-            Channels: List = [64, 128, 256, 512, 512, 384],
+            Channels: List|None = None, #[64, 128, 256, 512, 512, 384],
             Attentions: List = [False, True, False, False, False, True],
+            first_channels: int|None = None,
+            num_layers: int|None = None,
             Upscales: List = [False, False, False, True, True, True],
             num_groups: int = 32,
             dropout_prob: float = 0.0,
@@ -111,6 +116,13 @@ class UNET(nn.Module):
             time_steps: int = 1000,
             **kwargs):
         super().__init__()
+        if Channels is None:
+            Channels = compute_unet_channels(first_channels, num_layers)
+        if Channels[0] < num_groups:
+            warnings.warn(f"""Channels[0]=={Channels[0]}<{num_groups}==num_groups
+            and therefore was lowered""")
+            first_channels = num_groups
+            Channels = compute_unet_channels(first_channels, num_layers)
         self.num_layers = len(Channels)
         self.shallow_conv = nn.Conv2d(input_channels, Channels[0], kernel_size=3, padding=1)
         out_channels = (Channels[-1]//2)+Channels[0]
@@ -231,30 +243,31 @@ def inference(cfg,
               ):
     num_time_steps = cfg.model.num_time_steps
     ema_decay = cfg.model.ema_decay
-    n_images = cfg.n_images if cfg.debug is False else 1
+    n_images = cfg.n_images if cfg.debug is False else 4
     image_shape = tuple(cfg.image_shape)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device(device)
 
     print("INFERENCE")
     checkpoint = torch.load(checkpoint_path, weights_only=True)
 
     model = hydra.utils.instantiate(cfg.model)
-    model = model.to("cuda")
+    model = model.to(device)
 
     model.load_state_dict(checkpoint['weights'])
     ema = ModelEmaV3(model, decay=ema_decay)
     ema.load_state_dict(checkpoint['ema'])
-    scheduler = DDPM_Scheduler(num_time_steps=num_time_steps)
+    scheduler = DDPM_Scheduler(num_time_steps=num_time_steps, device=device)
     times = [0, 15, 50, 100, 200, 300, 400, 550, 700, 999]
     images = []
     z = torch.randn((1, 1,)+image_shape)
     padding_fn = UNetPad(z, depth=model.num_layers//2)
 
-
     with torch.no_grad():
         samples = []
         model = ema.module.eval()
         for i in tqdm(range(n_images)):
-            z = torch.randn((1, 1,)+image_shape)
+            z = torch.randn((1, 1,)+image_shape, device=device)
             z = padding_fn(z)
 
             for t in reversed(range(1, num_time_steps)):
@@ -262,60 +275,28 @@ def inference(cfg,
                 temp = (scheduler.beta[t]/((torch.sqrt(1-scheduler.alpha[t]))
                                            * (torch.sqrt(1-scheduler.beta[t]))))
                 z = (
-                    1/(torch.sqrt(1-scheduler.beta[t])))*z - (temp*model(z.cuda(), t).cpu())
+                    1/(torch.sqrt(1-scheduler.beta[t])))*z - (temp*model(z.cuda(), t))
                 if t[0] in times:
-                    images.append(z)
-                e = torch.randn((1, 1,) + image_shape)
+                    images.append(z.cpu())
+                e = torch.randn((1, 1,) + image_shape, device=device)
                 e = padding_fn(e)
                 z = z + (e*torch.sqrt(scheduler.beta[t]))
             temp = scheduler.beta[0]/((torch.sqrt(1-scheduler.alpha[0]))
                                       * (torch.sqrt(1-scheduler.beta[0])))
             x = (1/(torch.sqrt(1-scheduler.beta[0]))) * \
-                z - (temp*model(z.cuda(), [0]).cpu())
+                z - (temp*model(z.cuda(), [0]))
 
             samples.append(x)
-            images.append(x)
-            x = rearrange(x.squeeze(0), 'c h w -> h w c').detach()
-            x = x.numpy()
+            images.append(x.cpu())
+            x = x.cpu().numpy()
+            x = rearrange(x.squeeze(0), 'c h w -> h w c')
             display_reverse(images, savepath, i)
             images = []
     samples = torch.concat(samples, dim=0)
     samples = padding_fn.inverse(samples).squeeze()
     samples = samples.cpu().numpy()
     samples = (samples - samples.min()) / (samples.max() - samples.min())
-    np.save(os.path.join(savepath, "images.npy"), samples)
+    assert samples.shape == (n_images, 101, 91), samples.shape
+    np.save(savepath / "images.npy", samples)
 
     return samples
-
-
-def main():
-    batch_size = 2
-    x = torch.randn(batch_size, 1, 101, 91).cuda()
-    t = torch.randint(0,1000,(batch_size,)).cuda()
-    #t = [random.randint(0, 999) for _ in range(16)]
-    model = UNET().cuda()
-
-    D = model.num_layers // 2
-    assert D == 3, model.num_layers
-
-    pad_fn = UNetPad(x, D)
-    ic(x.shape)
-    x = pad_fn(x)
-    ic(x.shape)
-
-    padded = np.array(x.shape[-2:])
-    assert padded[0] % 2**D == 0
-    assert padded[1] % 2**D == 0
-    ic(padded/2**D)
-
-    y = model(x,t)
-    ic(y.shape)
-    assert y.shape == x.shape
-
-    n_params = 0
-    for p in model.parameters():
-        n_params += p.numel()
-    print(n_params)
-
-if __name__ == '__main__':
-    main()

@@ -14,6 +14,14 @@ import pandas as pd
 from omegaconf import OmegaConf
 
 
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+from pathlib import Path
+import yaml
+from collections import defaultdict
+
+
 def load_datasets_config(config_path: str) -> List[Dict[str, Any]]:
     """Load datasets configuration from YAML file."""
     config = OmegaConf.load(config_path)
@@ -134,25 +142,36 @@ def plot_metrics_comparison(df: pd.DataFrame, output_dir: str = "metric_plots"):
         mean_col = group['mean']
         std_col = group['std']
         
-        # Plot with error bars
-        plt.errorbar(df_sorted['n_samples'], df_sorted[mean_col], 
-                    yerr=df_sorted[std_col], fmt='o', capsize=5, capthick=2,
-                    alpha=0.7, markersize=6, label='Data with std dev')
-        plt.plot(df_sorted['n_samples'], df_sorted[mean_col], alpha=0.5, linestyle='--')
+        # Group data by n_samples to handle multiple values
+        grouped = df_sorted.groupby('n_samples')
+        
+        # Calculate statistics for each n_samples group
+        n_samples_list = []
+        means_list = []
+        stds_list = []
+        
+        for n_samples, group_data in grouped:
+            # Get all values for this n_samples
+            values = group_data[mean_col].dropna()
+            if len(values) > 0:
+                n_samples_list.append(n_samples)
+                means_list.append(values.mean())
+                stds_list.append(values.std() if len(values) > 1 else 0)
+        
+        # Plot individual data points
+        plt.scatter(df_sorted['n_samples'], df_sorted[mean_col], 
+                   alpha=0.5, s=30, color='lightblue', label='Individual values')
+        
+        # Plot mean with error bars
+        plt.errorbar(n_samples_list, means_list, yerr=stds_list, 
+                    fmt='o', capsize=5, capthick=2, color='darkblue',
+                    alpha=0.8, markersize=8, label='Mean ± std across runs')
+        plt.plot(n_samples_list, means_list, alpha=0.7, linestyle='--', color='darkblue')
         
         plt.xlabel('Number of Samples')
         plt.ylabel(f'{metric_name} (mean ± std)')
         plt.title(f'{metric_name} vs Number of Samples')
         plt.grid(True, alpha=0.3)
-        
-        # Add trend line for the mean values
-        if len(df_sorted) > 1:
-            valid_data = df_sorted[[mean_col, 'n_samples']].dropna()
-            if len(valid_data) > 1:
-                z = np.polyfit(valid_data['n_samples'], valid_data[mean_col], 1)
-                p = np.poly1d(z)
-                plt.plot(valid_data['n_samples'], p(valid_data['n_samples']), "r--", alpha=0.8, 
-                        label=f'Trend: y={z[0]:.3e}x+{z[1]:.3f}')
         
         plt.legend()
         plt.tight_layout()
@@ -168,24 +187,43 @@ def plot_metrics_comparison(df: pd.DataFrame, output_dir: str = "metric_plots"):
     for metric in simple_metrics:
         plt.figure(figsize=(10, 6))
         
-        # Plot the metric vs n_samples
-        plt.scatter(df_sorted['n_samples'], df_sorted[metric], alpha=0.7, s=60)
-        plt.plot(df_sorted['n_samples'], df_sorted[metric], alpha=0.5, linestyle='--')
+        # Group data by n_samples to handle multiple values
+        grouped = df_sorted.groupby('n_samples')
+        
+        # Calculate statistics for each n_samples group
+        n_samples_list = []
+        means_list = []
+        stds_list = []
+        
+        for n_samples, group_data in grouped:
+            # Get all values for this n_samples
+            values = group_data[metric].dropna()
+            if len(values) > 0:
+                n_samples_list.append(n_samples)
+                means_list.append(values.mean())
+                stds_list.append(values.std() if len(values) > 1 else 0)
+        
+        # Plot individual data points
+        plt.scatter(df_sorted['n_samples'], df_sorted[metric], 
+                   alpha=0.5, s=30, color='lightcoral', label='Individual values')
+        
+        # Plot mean with error bars if there are multiple runs
+        if any(std > 0 for std in stds_list):
+            plt.errorbar(n_samples_list, means_list, yerr=stds_list, 
+                        fmt='o', capsize=5, capthick=2, color='darkred',
+                        alpha=0.8, markersize=8, label='Mean ± std across runs')
+            plt.plot(n_samples_list, means_list, alpha=0.7, linestyle='--', color='darkred')
+        else:
+            # If no std (single values), just plot the means
+            plt.plot(n_samples_list, means_list, 'o-', color='darkred', 
+                    alpha=0.8, markersize=8, label='Mean values')
         
         plt.xlabel('Number of Samples')
         plt.ylabel(metric)
         plt.title(f'{metric} vs Number of Samples')
         plt.grid(True, alpha=0.3)
-        
-        # Add trend line
-        if len(df_sorted) > 1:
-            valid_data = df_sorted[[metric, 'n_samples']].dropna()
-            if len(valid_data) > 1:
-                z = np.polyfit(valid_data['n_samples'], valid_data[metric], 1)
-                p = np.poly1d(z)
-                plt.plot(valid_data['n_samples'], p(valid_data['n_samples']), "r--", alpha=0.8, 
-                        label=f'Trend: y={z[0]:.3e}x+{z[1]:.3f}')
-                plt.legend()
+            
+        plt.legend()
         
         plt.tight_layout()
         
@@ -290,7 +328,7 @@ def print_summary_statistics(df: pd.DataFrame):
 def main():
     """Main function to run the metric comparison analysis."""
     # Load datasets configuration
-    config_path = "photo_gen/evaluation/config/config.yaml"
+    config_path = "photo_gen/config/evaluation/config.yaml"
     
     if not os.path.exists(config_path):
         print(f"Config file not found: {config_path}")

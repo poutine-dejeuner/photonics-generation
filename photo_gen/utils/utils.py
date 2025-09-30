@@ -42,6 +42,29 @@ def load_wandb_config(raw_cfg: dict):
     return OmegaConf.create(parsed)
 
 
+def save_checkpoint(model, optimizer, ema, epoch, scaler, checkpoint_path):
+    checkpoint = {
+        'weights': model.state_dict(),
+        'optimizer': optimizer.state_dict(),
+        'ema': ema.state_dict(),
+        'scaler': scaler.state_dict(),
+        'epoch': epoch
+    }
+    torch.save(checkpoint, checkpoint_path)
+    print(f"Checkpoint saved at epoch {epoch+1} to {checkpoint_path}")
+
+
+def set_seed(seed: int = 42):
+    if seed is -1:
+        return
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(seed)
+    random.seed(seed)
+
+
 def find_file(root_dir, name):
     for dirpath, dirnames, filenames in os.walk(root_dir):
         if name in filenames:

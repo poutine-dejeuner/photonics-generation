@@ -1,4 +1,5 @@
 import os
+import yaml
 import numpy as np
 import pytest
 import tempfile
@@ -24,7 +25,7 @@ savedir = "debug"
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for test outputs."""
-    temp_path = tempfile.mkdtemp()
+    temp_path = Path(tempfile.mkdtemp())
     yield temp_path
     shutil.rmtree(temp_path)
 
@@ -331,10 +332,10 @@ class TestEvaluateModel:
                     ]
                 }
             })
+            model_cfg = OmegaConf.create({})
             
-            # This might still fail due to missing dependencies, but we can test the structure
             try:
-                result = evaluate_model(images, temp_dir, cfg)
+                result = evaluate_model(images, temp_dir, model_cfg, cfg)
                 # If it succeeds, check that we got some result
                 assert result is not None
             except (ImportError, AttributeError, KeyError):
@@ -346,21 +347,24 @@ def test_evaluate_model_original():
     savepath = Path(savedir)
     savepath.mkdir(parents=True, exist_ok=True)
 
-    # This test might fail if the specific file doesn't exist
-    images_path = """/home/mila/l/letournv/drive_scratch/nanophoto/diffusion/
-                    train3/7121883/images.npy"""
+    run_path = Path(os.environ["SCRATCH"]) / "nanophoto/diffusion/train3/7121883/"
+    images_path = run_path / "images.npy"
+    model_cfg_path = run_path / "wandb/latest-run/files/config.yaml"
     
-    if not os.path.exists(images_path.strip()):
+    if not images_path.exists():
         pytest.skip(f"Test data not found at {images_path.strip()}")
     
     images = np.load(images_path)[:4]
-    config_dir = "../config"
+    config_dir = "../photo_gen/config/"
     
     try:
         with initialize(config_path=config_dir):
-            cfg = compose(config_name="comparison_config.yaml")
+            cfg = compose(config_name="comparison_config")
         cfg["debug"] = True
-        out = evaluate_model(images, savepath, cfg)
+        cfg.evaluation.functions[3].dim = 2
+        with open(model_cfg_path, "r", encoding="utf-8") as model_cfg:
+            model_cfg = yaml.safe_load(model_cfg)
+        out = evaluate_model(images, savepath, model_cfg, cfg)
         assert out is not None
     except Exception as e:
         pytest.skip(f"Configuration loading failed: {e}")

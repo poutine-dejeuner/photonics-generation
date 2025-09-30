@@ -1,19 +1,43 @@
 import os
+from pathlib import Path
 import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from einops import rearrange
 
 
-def display_reverse(images: list, savepath: str, idx: int):
+
+def compute_unet_channels(initial_n_channels: int, n_layers: int):
+    assert n_layers % 2 == 0, "n_layers must be even"
+    n_encode_layers = n_layers // 2
+    channels = [initial_n_channels * 2**k for k in range(n_encode_layers + 1)]
+    
+    for k in range(2, n_encode_layers + 1):
+        decode_layer_dim = int(channels[-1] / 2 + channels[n_encode_layers + 1 - k])
+        channels.append(decode_layer_dim)
+    return channels
+
+
+class DDPM_Scheduler(torch.nn.Module):
+    def __init__(self, num_time_steps: int=1000, device:torch.device=torch.device("cpu")):
+        super().__init__()
+        self.beta = torch.linspace(1e-4, 0.02, num_time_steps, requires_grad=False, device=device)
+        alpha = 1 - self.beta
+        self.alpha = torch.cumprod(alpha, dim=0).requires_grad_(False)
+
+    def forward(self, t):
+        return self.beta[t], self.alpha[t]
+
+
+def display_reverse(images: list, savepath: Path, idx: int):
     fig, axes = plt.subplots(1, 10, figsize=(10, 1))
     for i, ax in enumerate(axes.flat):
-        x = images[i].squeeze(0)
-        x = rearrange(x, 'c h w -> h w c')
+        x = images[i].squeeze()
+        # x = rearrange(x, 'c h w -> h w c')
         x = x.numpy()
         ax.imshow(x)
         ax.axis('off')
-    plt.savefig(os.path.join(savepath, f"im{idx}.png"))
+    plt.savefig(savepath / f"im{idx}.png")
     plt.close()
 
 

@@ -1,1 +1,1 @@
-_target_: photo_gen.evaluation.evaluation.ComputeFOM
+_target_: photo_gen.evaluation.evaluation.FOM

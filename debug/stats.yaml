@@ -1,0 +1,7 @@
+photo_gen.evaluation.evaluation.Entropy: .inf
+photo_gen.evaluation.evaluation.ImageAverageEntropy: -1.9336731412476373
+photo_gen.evaluation.evaluation.NNDistanceTrainSet:
+  mean: 12.345386241630813
+  std: 0.7044262637257476
+photo_gen.evaluation.evaluation.PCAProjPerDimEntropy: .inf
+photo_gen.evaluation.evaluation.PairwiseDistanceEntropy: 3.8404423223957465
