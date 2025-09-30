@@ -12,6 +12,7 @@ wandb/
 train3/
 checkpoint.pt
 *.png
+!diffusion.png
 */checkpoint.pt
 test.py
 *.out
