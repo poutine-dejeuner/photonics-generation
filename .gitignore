@@ -17,3 +17,4 @@ checkpoint.pt
 test.py
 *.out
 metrics_data.csv
+train3
