@@ -76,7 +76,13 @@ def make_config(path):
         yaml.dump(datasets, f)
 
 
-def find_files(rootdir: Path, filenames: list[str])-> list[ Path]:
+class NullPath(Path):
+    _flavour = Path('.')._flavour
+    def exists(self):
+        return False
+
+
+def find_files(rootdir: Path, filenames: list[str])-> list[Path|None]:
     """
     Search for files with specified names in the current directory and its subdirectories.
 
@@ -103,7 +109,7 @@ def find_files(rootdir: Path, filenames: list[str])-> list[ Path]:
                 found_files = [found_files[key] for key in filenames]
             return found_files
     warnings.warn(f"Some files were not found {found_files}, {filenames}")
-    return None
+    return [NullPath()]
 
 def make_config_chercheuse(rootdir: str|None = None) -> None:
     """

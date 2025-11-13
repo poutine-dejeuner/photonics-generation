@@ -14,6 +14,28 @@ from einops import rearrange
 from omegaconf import OmegaConf
 
 
+def even_div_padding(x: torch.Tensor, depth: int = 4):
+    """
+    Pads a tensor x of shape (B, C, H, W) so that H and W are divisible by 2^depth.
+    Returns the padded tensor and the slices to undo the padding.
+    """
+    _, _, h, w = x.shape
+    target_h = ((h - 1) // 2**depth + 1) * 2**depth
+    target_w = ((w - 1) // 2**depth + 1) * 2**depth
+    pad_h = target_h - h
+    pad_w = target_w - w
+    pad = (0, pad_w, 0, pad_h)  # pad W then H
+    x_padded = F.pad(x, pad)
+    return x_padded, (slice(0, h), slice(0, w))  # for unpadding later
+
+
+def get_num_params(model: torch.nn.Module):
+    N = 0
+    for p in model.parameters():
+        N += p.numel()
+    return N
+
+
 def load_wandb_config(raw_cfg: dict):
     import ast
     """

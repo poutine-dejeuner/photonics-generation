@@ -1,25 +1,19 @@
 import os
-import random
 from tqdm import tqdm
 from typing import List
-import argparse
-import time
-import datetime
+from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn as nn
-import hydra
 from einops import rearrange
-from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
-import torch.optim as optim
 from timm.utils import ModelEmaV3
+from omegaconf import OmegaConf
 
 from photo_gen.models.unet import UNET
-from photo_gen.models.utils import DDPM_Scheduler, set_seed
+from photo_gen.utils.unet_utils import DDPM_Scheduler, UNetPad
+from photo_gen.evaluation.evaluation import CompareToTrainClosestImage, compute_FOM_parallele
 
-from utils import UNetPad, AttrDict
 
 from icecream import ic, install
 
@@ -33,29 +27,38 @@ def guided_inference(init_image, cfg):
     assert init_image.ndim == 4
     image_shape = init_image.shape[-2:]
     n_images = init_image.shape[0]
-    num_time_steps = cfg.model.n_time_steps if cfg.debug is False else 1
+    num_time_steps = cfg.model.num_time_steps if cfg.debug is False else 1
 
-    checkpoint_path = os.path.expanduser(cfg.checkpoint_load_path)
-    checkpoint = torch.load(checkpoint_path, weights_only=True)
-    model = UNET().cuda()
+    checkpoint = torch.load(cfg.checkpoint_path, weights_only=True)
+
+    model = UNET(
+        first_channels=cfg.model.first_channels,
+        num_layers=cfg.model.num_layers,
+        input_channels=cfg.model.input_channels,
+        output_channels=cfg.model.output_channels,
+        Attentions=cfg.model.Attentions,
+        Upscales=cfg.model.Upscales,
+        num_groups=cfg.model.num_groups,
+        num_heads=cfg.model.num_heads,
+        dropout_prob=cfg.model.dropout_prob
+    ).cuda()
+
     model.load_state_dict(checkpoint['weights'])
     ema = ModelEmaV3(model, decay=cfg.model.ema_decay)
     ema.load_state_dict(checkpoint['ema'])
     scheduler = DDPM_Scheduler(num_time_steps=num_time_steps)
     times = [0, 15, 50, 100, 200, 300, 400, 550, 700, 999]
     images = []
-    z = torch.randn((1,1,)+image_shape)
+    z = torch.randn((1, 1,)+image_shape)
     padding_fn = UNetPad(z, depth=model.num_layers//2)
 
     with torch.no_grad():
         samples = []
         model = ema.module.eval()
         for i in tqdm(range(n_images)):
-            # z = torch.randn((1,1,)+image_shape)
             z = init_image
-            # ic(z.shape, z.min(), z.max())
             z = padding_fn(z)
-            
+
             for t in reversed(range(1, num_time_steps)):
                 t = [t]
                 temp = (scheduler.beta[t]/((torch.sqrt(1-scheduler.alpha[t]))
@@ -76,27 +79,13 @@ def guided_inference(init_image, cfg):
             images.append(x)
             x = rearrange(x.squeeze(0), 'c h w -> h w c').detach()
             x = x.numpy()
-            # display_reverse(images, cfg.savepath, i)
             images = []
     samples = torch.concat(samples, dim=0)
     samples = padding_fn.inverse(samples).squeeze()
     samples = samples.cpu().numpy()
     samples = (samples - samples.min()) / (samples.max() - samples.min())
-    # np.save(os.path.join(cfg.savepath, "images.npy"), samples)
     return samples
 
-
-def display_reverse(images: List, savepath: str, idx: int):
-    ic(savepath)
-    fig, axes = plt.subplots(1, 10, figsize=(10, 1))
-    for i, ax in enumerate(axes.flat):
-        x = images[i].squeeze(0)
-        x = rearrange(x, 'c h w -> h w c')
-        x = x.numpy()
-        ax.imshow(x)
-        ax.axis('off')
-    plt.savefig(os.path.join(savepath, f"im{idx}.png"))
-    plt.clf()
 
 def comparison(x, y):
     sim = np.dot(x.flatten(), y.flatten())
@@ -104,23 +93,39 @@ def comparison(x, y):
     return sim, dist
 
 
-@hydra.main(config_path="config", config_name="config")
-def main(cfg):
+def main():
+    basepath = Path("checkpoints/unet_fast").resolve()
+    configpath = basepath / "config.yaml"
+    # with open(configpath, 'r') as f:
+        # cfg = initialize(f)
+
+    cfg = OmegaConf.load(configpath)
+    cfg.checkpoint_path = basepath / "checkpoint.pt"
     dtype = torch.float32
-    os.makedirs(cfg.savepath, exist_ok=True)
-    
-    # Load all samples from kmeans.npy
-    kmeans_file = os.path.join(os.path.dirname(__file__), "images", "kmeans.npy")
-    all_guides = np.load(kmeans_file)
+    savepath = basepath / "gen"
+    os.makedirs(savepath, exist_ok=True)
+
+    # cfg.debug = True
+
     if cfg.debug:
-        all_guides = all_guides[0:4]
-        cfg.model.n_time_steps = 10
-    print(f"Loaded {all_guides.shape[0]} samples from {kmeans_file}")
-    
+        cfg.model.num_time_steps = 10
+
+    all_guides = []
+    num_samples = 32 if not cfg.debug else 4
+    guide_size = cfg.image_shape
+
+    for _ in range(num_samples):
+        guide = np.random.rand(*guide_size).astype(np.float32)
+        from scipy.ndimage import gaussian_filter
+        guide = gaussian_filter(guide, sigma=3)
+        guide = (guide - guide.min()) / (guide.max() - guide.min())
+        all_guides.append(guide)
+    all_guides = np.stack(all_guides, axis=0)
+
     # Process each sample
     for sample_idx, guide_data in enumerate(all_guides):
         print(f"\nProcessing sample {sample_idx + 1}/{all_guides.shape[0]}")
-        
+
         # Prepare guide tensor
         guide = torch.tensor(guide_data).unsqueeze(0).unsqueeze(0).to(dtype)
         image_shape = guide.shape[-2:]
@@ -137,9 +142,9 @@ def main(cfg):
         guide_norm = torch.linalg.vector_norm(guide) ** 2
         N = 3
         titles = [
-                "guide",
-                "random gen",
-                ]
+            "guide",
+            "random gen",
+        ]
 
         # add random gen
         in_images.append(noise.numpy().squeeze())
@@ -168,20 +173,20 @@ def main(cfg):
         # Create visualization for this sample
         _, axes = plt.subplots(2, len(in_images))
         for i in range(len(in_images)):
-            axes[0,i].imshow(in_images[i])
-            axes[0,i].axis("off")
-            axes[0,i].set_title(titles[i])
-            axes[1,i].imshow(out_images[i])
-            axes[1,i].axis("off")
+            axes[0, i].imshow(in_images[i])
+            axes[0, i].axis("off")
+            axes[0, i].set_title(titles[i])
+            axes[1, i].imshow(out_images[i])
+            axes[1, i].axis("off")
             # axes[1,i].set_title(titles[i])
             sim, dist = comparison_list[i]
-            axes[1,i].text(0.5, -10, f"{sim:.2f}, {dist:.2f}")
+            axes[1, i].text(0.5, -10, f"{sim:.2f}, {dist:.2f}")
 
         plt.tight_layout()
         # Save with sample index in filename
-        plt.savefig(os.path.join(cfg.savepath, f"guided_gen_tests_sample_{sample_idx:03d}.png"))
+        plt.savefig( savepath / f"guided_gen_tests_sample_{sample_idx:03d}.png")
         plt.close()  # Close the figure to free memory
-        
+
         # Save the generated samples for this guide
         sample_results = {
             'guide': guide.squeeze().numpy(),
@@ -190,7 +195,13 @@ def main(cfg):
             'scales': scales,
             'comparisons': comparison_list
         }
-        np.save(os.path.join(cfg.savepath, f"sample_{sample_idx:03d}_results.npy"), sample_results)
+        out_images = np.stack(out_images)
+        np.save(savepath / "guided_gen_images.npy", out_images)
+        compare = CompareToTrainClosestImage(train_set_path=cfg.data.path)
+        compare(images=out_images, savepath=savepath, model_name="diffusion",
+                cfg=cfg)
+        fom = compute_FOM_parallele(out_images)
+        np.save(savepath / "fom.npy", fom)
 
 
 if __name__ == '__main__':

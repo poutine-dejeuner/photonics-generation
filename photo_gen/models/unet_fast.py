@@ -10,7 +10,7 @@ import hydra
 from timm.utils.model_ema import ModelEmaV3
 from torch.amp import GradScaler, autocast
 
-from photo_gen.utils.utils import save_checkpoint
+from photo_gen.utils.utils import save_checkpoint, get_num_params
 from photo_gen.utils.unet_utils import UNetPad, DDPM_Scheduler
 
 from icecream import ic
@@ -56,6 +56,7 @@ def train_fast(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir: os.
     # Model setup
     scheduler = DDPM_Scheduler(num_time_steps=num_time_steps, device=device)
     model = hydra.utils.instantiate(cfg.model)
+    ic(get_num_params(model))
     model = model.to(device)
 
     # # Model compilation for additional speedup (PyTorch 2.0+)

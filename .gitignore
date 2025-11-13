@@ -18,3 +18,5 @@ test.py
 *.out
 metrics_data.csv
 train3
+Flow_*/
+lightning_logs/

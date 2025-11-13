@@ -113,7 +113,7 @@ class SinusoidalEmbeddings(nn.Module):
 
 class UNET(nn.Module):
     def __init__(self,
-                 # [64, 128, 256, 512, 512, 384],
+                 # default number of channels [32, 64, 128, 256, 256, 192]
                  Channels: List | None = None,
                  Attentions: List = [False, True, False, False, False, True],
                  first_channels: int | None = None,

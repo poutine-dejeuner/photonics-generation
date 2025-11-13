@@ -1,0 +1,5 @@
+name: normflow
+defaults:
+  - /inference: normflow
+
+_target_: photo_gen.models.multiscaleflow

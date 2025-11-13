@@ -18,3 +18,5 @@
   metric: True
 - _target_: photo_gen.evaluation.evaluation.BinarizationLoss
   metric: True
+- _target_: photo_gen.evaluation.evaluation.CompareToTrainClosestImage
+  train_set_path: ~/scratch/nanophoto/topoptim/fulloptim/images.npy
