@@ -87,7 +87,8 @@ def closest_image(img: np.ndarray, train_set: np.ndarray) -> tuple[np.ndarray, f
     return closest_img, min_dist
         
         
-def plot_closest_images(images: np.ndarray, train_set: np.ndarray,  savepath: str = "."):
+def plot_closest_images(images: np.ndarray, fom: np.ndarray, train_set: np.ndarray, 
+                        savepath: str = "."):
     """
     Plot some generated image alongside its closest match from the training set.
     The distances are computed in L2 norm. Then, the interval [min_dist, max_dist] is separated in 3 equal parts and N images are uniformly sampled from each part according to their distance to the closest training image.
@@ -111,7 +112,7 @@ def plot_closest_images(images: np.ndarray, train_set: np.ndarray,  savepath: st
     closest_images = np.array(closest_images)
     min_dist = distances.min()
     max_dist = distances.max()
-    n_samples_per_range = 5
+    n_samples_per_range = 4
     distance_ranges = np.linspace(min_dist, max_dist, 4)
     fig, axes = plt.subplots(3, n_samples_per_range, figsize=(15, 9))
     fig.suptitle('Generated vs Closest Training Images',
@@ -133,7 +134,7 @@ def plot_closest_images(images: np.ndarray, train_set: np.ndarray,  savepath: st
             train_img = (train_img - train_img.min()) / (train_img.max() - train_img.min() + 1e-8)
             combined_img = np.concatenate((gen_img, train_img), axis=1)
             ax.imshow(combined_img, vmin=0, vmax=1)
-            ax.set_title(f'Dist: {distances[idx]:.4f}', fontsize=10)
+            ax.set_title(f'FOM: {fom[idx]:.3f}, Dist: {distances[idx]:.4f}')
             ax.axis('off')
     plt.tight_layout()
     plt.subplots_adjust(top=0.92)
@@ -172,8 +173,6 @@ def plot_closest_images2(images: np.ndarray, fom: np.ndarray, train_set: np.ndar
     indices = np.flip(np.argsort(distances))[:4]
     
     fig, axes = plt.subplots(2, n_samples, figsize=(15, 9))
-    # fig.suptitle('Generated vs Closest Training Images',
-                 # fontsize=16, fontweight='bold')
 
     for j, idx in enumerate(indices):
         
@@ -183,16 +182,106 @@ def plot_closest_images2(images: np.ndarray, fom: np.ndarray, train_set: np.ndar
         train_img = (train_img - train_img.min()) / (train_img.max() - train_img.min() + 1e-8)
 
         axes[0, j].imshow(gen_img, vmin=0, vmax=1)
-        axes[0, j].set_title(f'FOM: {fom[idx]:.3f, Dist: {distances[idx]:.4f}}')
+        axes[0, j].set_title(f'FOM: {fom[idx]:.3f}, Dist: {distances[idx]:.4f}')
         axes[0, j].axis('off')
         axes[1, j].imshow(train_img, vmin=0, vmax=1)
         axes[1, j].axis('off')
-    # plt.tight_layout()
     plt.subplots_adjust(top=0.92)
     save_file = os.path.join(savepath,
                              "generated_vs_closest_train.png")
     plt.savefig(save_file, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
+
+
+def plot_closest_images3(images: np.ndarray, fom: np.ndarray, train_set: np.ndarray, 
+                        savepath: str = "."):
+    images = (images - images.min()) / (images.max() - images.min())
+    train_set = (train_set - train_set.min()) / (train_set.max()
+            - train_set.min())
+    images = images.squeeze()
+    train_set = train_set.squeeze()
+    distances = []
+    closest_images = []
+    for img in images:
+        ts_image, min_dist = closest_image(img, train_set)
+        distances.append(min_dist)
+        closest_images.append(ts_image)
+    distances = np.array(distances)
+    closest_images = np.array(closest_images)
+    n_samples_per_range = 4
+    fig, axes = plt.subplots(2, n_samples_per_range, figsize=(15, 5))
+    indices = np.zeros((2, n_samples_per_range))
+    indices[0, :] = np.argsort(distances)[:n_samples_per_range]
+    indices[1, :] = np.flip(np.argsort(distances))[:n_samples_per_range]
+    indices = indices.astype(int)
+    for i in range(2):
+        for j in range(n_samples_per_range):
+            ax = axes[i, j]
+            idx = indices[i, j]
+            gen_img = images[idx]
+            train_img = closest_images[idx]
+            gen_img = (gen_img - gen_img.min()) / (gen_img.max() - gen_img.min() + 1e-8)
+            train_img = (train_img - train_img.min()) / (train_img.max() - train_img.min() + 1e-8)
+            combined_img = np.concatenate((gen_img, train_img), axis=1)
+            ax.imshow(combined_img, vmin=0, vmax=1)
+            ax.set_title(f'FOM: {fom[idx]:.3f}, Dist: {distances[idx]:.4f}')
+            ax.axis('off')
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.92)
+    save_file = os.path.join(savepath,
+                             "generated_vs_closest_train.png")
+    plt.savefig(save_file, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close()
+
+
+def plot_closest_images_test():
+    path = Path("../../data/diffusion/unet_fast")
+    train_set = Path("../../data/topoptim/images.npy")
+    images = (path / "images.npy").resolve()
+    fom = (path / "fom.npy").resolve()
+    train_set = np.load(train_set)
+    images = np.load(images)
+    fom = np.load(fom)
+    plot_closest_images(images, fom, train_set)
+
+
+def plot_closest_images2_test():
+    path = Path("../../data/diffusion/unet_fast")
+    train_set = Path("../../data/topoptim/images.npy")
+    images = (path / "images.npy").resolve()
+    fom = (path / "fom.npy").resolve()
+    train_set = np.load(train_set)
+    images = np.load(images)
+    fom = np.load(fom)
+    plot_closest_images2(images, fom, train_set)
+
+
+def plot_closest_images3_test():
+    path = Path("../../data/diffusion/unet_fast")
+    train_set = Path("../../data/topoptim/images.npy")
+    images = (path / "images.npy").resolve()
+    fom = (path / "fom.npy").resolve()
+    train_set = np.load(train_set)
+    images = np.load(images)
+    fom = np.load(fom)
+    plot_closest_images3(images, fom, train_set)
+    
+
+def ts_dist_hist(images: np.ndarray, train_set: np.ndarray):
+    distances = []
+    for img in images:
+        ts_image, min_dist = closest_image(img, train_set)
+        distances.append(min_dist)
+    plt.hist(distances, bins=100)
+    plt.savefig("ts_dist_hist.png")
+
+
+def ts_dist_hist_test():
+    images = Path("../../data/diffusion/unet_fast/images.npy")
+    train_set = Path("../../data/topoptim/images.npy")
+    train_set = np.load(train_set)
+    images = np.load(images)
+    ts_dist_hist(images, train_set)
 
 
 class BinarizationLoss(EvaluationFunction):
@@ -593,5 +682,9 @@ def main(cfg):
 
 
 if __name__ == "__main__":
-    main()
+    # main()
     # plot_closest_images_test()
+    # plot_closest_images2_test()
+    # plot_closest_images3_test()
+    ts_dist_hist_test()
+
