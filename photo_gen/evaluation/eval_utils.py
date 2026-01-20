@@ -1,7 +1,8 @@
 import os
-from pathlib import Path
+from pathlib import Path, PosixPath, WindowsPath
 import yaml
 import warnings
+import sys
 
 import torch
 
@@ -77,7 +78,17 @@ def make_config(path):
 
 
 class NullPath(Path):
-    _flavour = Path('.')._flavour
+    """
+    A Path subclass that always returns False for exists().
+    Compatible with Python 3.8-3.13+.
+    """
+    def __new__(cls, *args, **kwargs):
+        # Python 3.12+ removed _flavour attribute
+        # We need to explicitly choose the right Path subclass
+        if cls is NullPath:
+            cls = WindowsPath if os.name == 'nt' else PosixPath
+        return super().__new__(cls, *args, **kwargs)
+    
     def exists(self):
         return False
 
