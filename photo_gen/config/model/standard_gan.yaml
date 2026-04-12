@@ -17,6 +17,7 @@ batch_size: 32
 lr_g: 0.0002  # Generator learning rate
 lr_c: 0.0002  # Discriminator learning rate
 label_smoothing: 0.1  # Label smoothing for discriminator
+ema_decay: 0.9999
 seed: -1
 train_set_size: -1  # -1 means use all available data
 n_compute_steps: 2_500_000

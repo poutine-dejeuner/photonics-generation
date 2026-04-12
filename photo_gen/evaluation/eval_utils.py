@@ -1,8 +1,8 @@
 import os
-from pathlib import Path, PosixPath, WindowsPath
+from pathlib import Path, PosixPath
 import yaml
 import warnings
-import sys
+from typing import List, Union, Optional
 
 import torch
 
@@ -77,23 +77,16 @@ def make_config(path):
         yaml.dump(datasets, f)
 
 
-class NullPath(Path):
+class NullPath(PosixPath):
     """
     A Path subclass that always returns False for exists().
     Compatible with Python 3.8-3.13+.
     """
-    def __new__(cls, *args, **kwargs):
-        # Python 3.12+ removed _flavour attribute
-        # We need to explicitly choose the right Path subclass
-        if cls is NullPath:
-            cls = WindowsPath if os.name == 'nt' else PosixPath
-        return super().__new__(cls, *args, **kwargs)
-    
     def exists(self):
         return False
 
 
-def find_files(rootdir: Path, filenames: list[str])-> list[Path|None]:
+def find_files(rootdir: Path, filenames: List[str]) -> List[Optional[Path]]:
     """
     Search for files with specified names in the current directory and its subdirectories.
 

@@ -15,6 +15,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch
 import pytorch_lightning as pl
+from timm.utils.model_ema import ModelEmaV3
 
 from tqdm.notebook import tqdm
 import seaborn as sns
@@ -465,7 +466,23 @@ def create_simple_flow(c_in, c_out, h, w, n_layers, c_hidden=16, use_vardeq=True
     return flow_model
 
 
-def train_flow(flow, model_name, max_epochs=200, batch_size=128):
+class EMACallback(pl.Callback):
+    """Lightning callback that maintains an EMA copy of the model."""
+
+    def __init__(self, decay=0.9999):
+        super().__init__()
+        self.decay = decay
+        self.ema = None
+
+    def on_fit_start(self, trainer, pl_module):
+        self.ema = ModelEmaV3(pl_module, decay=self.decay)
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        self.ema.update(pl_module)
+
+
+def train_flow(flow, model_name, max_epochs=200, batch_size=128, ema_decay=0.9999):
+    ema_callback = EMACallback(decay=ema_decay)
     # Create a PyTorch Lightning trainer
     trainer = pl.Trainer(default_root_dir=os.path.join(CHECKPOINT_PATH, model_name),
                          accelerator="gpu" if str(
@@ -474,7 +491,8 @@ def train_flow(flow, model_name, max_epochs=200, batch_size=128):
                          max_epochs=max_epochs,
                          gradient_clip_val=1.0,
                          callbacks=[ModelCheckpoint(save_weights_only=True, mode="min", monitor="val_bpd"),
-                                    LearningRateMonitor("epoch")],
+                                    LearningRateMonitor("epoch"),
+                                    ema_callback],
                          check_val_every_n_epoch=5)
     trainer.logger._log_graph = True
     # Optional logging argument that we don't need
@@ -506,7 +524,7 @@ def train_flow(flow, model_name, max_epochs=200, batch_size=128):
         result = {"test": test_result, "val": val_result,
                   "time": duration / len(test_loader) / flow.import_samples}
 
-    return flow, result
+    return flow, result, ema_callback.ema
 
 
 class SqueezeFlow(nn.Module):
@@ -637,13 +655,16 @@ def train_normflow(data, checkpoint_path, savedir, run, cfg):
 
     print(f"training {model_name}")
     print(f"N params: {get_num_params(model)}")
-    model, result = train_flow(model,
+    ema_decay = getattr(cfg, 'ema_decay', 0.9999)
+    model, result, ema = train_flow(model,
                                model_name="Flow_Multiscale",
                                max_epochs=max_epochs,
-                               batch_size=batch_size)
+                               batch_size=batch_size,
+                               ema_decay=ema_decay)
 
-    model = model.cuda()
-    samples = model.sample(img_shape=(1000, 1) + PADDED_IMAGE_SHAPE)
+    sampling_model = ema.module if ema is not None else model
+    sampling_model = sampling_model.cuda()
+    samples = sampling_model.sample(img_shape=(1000, 1) + PADDED_IMAGE_SHAPE)
     # Crop back to original dimensions for display
     samples = samples[:, :, :IMAGE_SHAPE[0], :IMAGE_SHAPE[1]]
     show_imgs(samples.cpu(), title=name)

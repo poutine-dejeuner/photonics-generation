@@ -14,6 +14,7 @@ import random
 from typing import Tuple, Optional
 from photo_gen.utils.utils import set_seed
 from photo_gen.utils.parameter_counting import count_parameters
+from timm.utils.model_ema import ModelEmaV3
 
 
 class Encoder(nn.Module):
@@ -190,6 +191,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
     assert (count_parameters(model) - N) < 0.14 * N
     
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    ema = ModelEmaV3(model, decay=cfg.model.ema_decay)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, factor=0.5)
 
     dataset = TensorDataset(data)
@@ -202,6 +204,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                 weights_only=False)
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
+        ema.load_state_dict(checkpoint['ema'])
         start_epoch = checkpoint['epoch'] + 1
         print(f"Resumed from epoch {start_epoch}")
 
@@ -231,6 +234,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
 
             loss.backward()
             optimizer.step()
+            ema.update(model)
             
             total_loss += loss.item()
             total_recon_loss += recon_loss.item()
@@ -269,6 +273,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                 'epoch': epoch,
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
+                'ema': ema.state_dict(),
                 'scheduler': scheduler.state_dict(),
                 'config': {
                     'latent_dim': latent_dim,
@@ -277,7 +282,8 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                     'hidden_dim': cfg.model.hidden_dim,
                     'beta': beta,
                     'lr': lr,
-                    'batch_size': batch_size
+                    'batch_size': batch_size,
+                    'ema_decay': cfg.model.ema_decay,
                 }
             }
             torch.save(checkpoint, checkpoint_path)
@@ -289,6 +295,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                 'epoch': epoch,
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
+                'ema': ema.state_dict(),
                 'scheduler': scheduler.state_dict(),
                 'config': {
                     'latent_dim': latent_dim,
@@ -297,7 +304,8 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                     'hidden_dim': cfg.model.hidden_dim,
                     'beta': beta,
                     'lr': lr,
-                    'batch_size': batch_size
+                    'batch_size': batch_size,
+                    'ema_decay': cfg.model.ema_decay,
                 }
             }
             torch.save(checkpoint, checkpoint_path)
@@ -367,7 +375,9 @@ def inference(checkpoint_path: str, savepath: str, cfg):
                 hidden_dim=model_cfg['hidden_dim']).to(device)
     
     model.load_state_dict(checkpoint['model'])
-    model.eval()
+    ema = ModelEmaV3(model, decay=model_cfg.get('ema_decay', 0.9999))
+    ema.load_state_dict(checkpoint['ema'])
+    model = ema.module.eval()
     
     print(f"Generating {n_samples} samples...")
     

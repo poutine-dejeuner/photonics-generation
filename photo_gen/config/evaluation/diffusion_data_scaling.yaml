@@ -6,4 +6,3 @@ defaults:
   - fom: meep
   - functions: complete
   - datasets: diffusion_data_scaling2
- 

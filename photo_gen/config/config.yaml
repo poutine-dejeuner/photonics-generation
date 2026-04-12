@@ -12,6 +12,7 @@ guide_file: ~/repos/diffusion-model/guided_gen/guide.npy
 savepath: images
 inference_only: False
 evaluation_only: False
+evaluation: True
 # Path to images from previous run for evaluation_only mode
 evaluation_images_path: null  # Set to path of images directory from previous run
 meep: True

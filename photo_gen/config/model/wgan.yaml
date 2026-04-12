@@ -17,7 +17,7 @@ lr_g: 0.0001
 lr_c: 0.0001
 n_critic: 5  # Train critic 5 times per generator step
 lambda_gp: 10  # Gradient penalty coefficient
+ema_decay: 0.9999
 seed: -1
 train_set_size: -1  # -1 means use all available data
 n_compute_steps: 2_500_000
-

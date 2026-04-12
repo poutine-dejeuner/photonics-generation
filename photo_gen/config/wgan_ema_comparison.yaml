@@ -1,0 +1,15 @@
+# WGAN-GP with EMA comparison configuration
+defaults:
+  - comparison_config
+  - model: wgan
+  - train: wgan
+  - inference: wgan
+
+experiment:
+  name: "wgan_ema_comparison"
+  description: "WGAN-GP with EMA model comparison with diffusion models"
+  tags: ["wgan", "ema", "comparison", "gradient-penalty"]
+
+model:
+  lambda_gp: 10
+  ema_decay: 0.9999

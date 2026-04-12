@@ -16,6 +16,7 @@ hidden_dim: 144
 batch_size: 32
 lr: 0.001
 beta: 1.0  # KL weight for β-VAE (1.0 = standard VAE, >1.0 = β-VAE)
+ema_decay: 0.9999
 seed: -1
 train_set_size: -1  # -1 means use all available data
 n_compute_steps: 2_500_000

@@ -67,7 +67,7 @@ def save_checkpoint(model, optimizer, ema, epoch, scaler, checkpoint_path):
 
 
 def set_seed(seed: int = 42):
-    if seed is -1:
+    if seed == -1:
         return
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)

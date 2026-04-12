@@ -3,3 +3,4 @@ defaults:
   - /inference: normflow
 
 _target_: photo_gen.models.multiscaleflow
+ema_decay: 0.9999

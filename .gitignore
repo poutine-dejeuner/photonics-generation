@@ -20,3 +20,5 @@ metrics_data.csv
 train3
 Flow_*/
 lightning_logs/
+photo_gen/config/.schemas
+photo_gen/.schemas

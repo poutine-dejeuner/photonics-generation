@@ -14,6 +14,7 @@ import random
 from typing import Optional
 from photo_gen.utils.utils import set_seed
 from photo_gen.utils.parameter_counting import count_parameters
+from timm.utils.model_ema import ModelEmaV3
 
 
 class Generator(nn.Module):
@@ -148,6 +149,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
     
     optimizer_G = optim.Adam(gan.generator.parameters(), lr=lr_g, betas=(0.5, 0.999))
     optimizer_D = optim.Adam(gan.discriminator.parameters(), lr=lr_c, betas=(0.5, 0.999))
+    ema_g = ModelEmaV3(gan.generator, decay=cfg.model.ema_decay)
     
     dataset = TensorDataset(data)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, 
@@ -160,6 +162,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
         gan.discriminator.load_state_dict(checkpoint['discriminator'])
         optimizer_G.load_state_dict(checkpoint['optimizer_G'])
         optimizer_D.load_state_dict(checkpoint['optimizer_D'])
+        ema_g.load_state_dict(checkpoint['ema_generator'])
         start_epoch = checkpoint['epoch'] + 1
         print(f"Resumed from epoch {start_epoch}")
     
@@ -188,6 +191,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
             
             g_loss.backward()
             optimizer_G.step()
+            ema_g.update(gan.generator)
             
             optimizer_D.zero_grad()
             
@@ -231,6 +235,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                 'discriminator': gan.discriminator.state_dict(),
                 'optimizer_G': optimizer_G.state_dict(),
                 'optimizer_D': optimizer_D.state_dict(),
+                'ema_generator': ema_g.state_dict(),
                 'config': {
                     'latent_dim': latent_dim,
                     'img_channels': img_channels,
@@ -239,7 +244,8 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                     'lr_g': lr_g,
                     'lr_c': lr_c,
                     'label_smoothing': label_smoothing,
-                    'batch_size': batch_size
+                    'batch_size': batch_size,
+                    'ema_decay': cfg.model.ema_decay,
                 }
             }
             torch.save(checkpoint, checkpoint_path)
@@ -253,6 +259,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                 'discriminator': gan.discriminator.state_dict(),
                 'optimizer_G': optimizer_G.state_dict(),
                 'optimizer_D': optimizer_D.state_dict(),
+                'ema_generator': ema_g.state_dict(),
                 'config': {
                     'latent_dim': latent_dim,
                     'img_channels': img_channels,
@@ -261,7 +268,8 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                     'lr_g': lr_g,
                     'lr_c': lr_c,
                     'label_smoothing': label_smoothing,
-                    'batch_size': batch_size
+                    'batch_size': batch_size,
+                    'ema_decay': cfg.model.ema_decay,
                 }
             }
             torch.save(checkpoint, checkpoint_path)
@@ -306,7 +314,9 @@ def inference(checkpoint_path: str, savepath: str, cfg):
                      device=device)
     
     gan.generator.load_state_dict(checkpoint['generator'])
-    gan.generator.eval()
+    ema_g = ModelEmaV3(gan.generator, decay=model_cfg.get('ema_decay', 0.9999))
+    ema_g.load_state_dict(checkpoint['ema_generator'])
+    generator = ema_g.module.eval()
     
     print(f"Generating {n_samples} samples...")
     
@@ -317,7 +327,7 @@ def inference(checkpoint_path: str, savepath: str, cfg):
         for i in tqdm(range(0, n_samples, batch_size)):
             current_batch_size = min(batch_size, n_samples - i)
             z = torch.randn(current_batch_size, model_cfg['latent_dim']).to(device)
-            batch_imgs = gan.generator(z)
+            batch_imgs = generator(z)
             generated_images.append(batch_imgs.cpu().numpy())
     
     generated_images = np.concatenate(generated_images, axis=0)

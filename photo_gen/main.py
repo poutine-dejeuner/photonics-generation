@@ -146,10 +146,11 @@ def main(cfg):
         images = np.load(image_files[0])
         print(f"Loaded {len(images)} images for evaluation from {image_files[0]}")
 
-    results = evaluate_model(images, savedir, cfg)
+    if cfg.evaluate is True:
+        results = evaluate_model(images, savedir, cfg)
 
-    if cfg.logger.enabled:
-        run.log(results)
+        if cfg.logger.enabled:
+            run.log(results)
 
     # if debuggin, ask the user if they want to delete the savedir
     # Debug cleanup

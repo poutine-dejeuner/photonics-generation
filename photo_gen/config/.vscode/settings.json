@@ -1,0 +1,15 @@
+{
+  "redhat.telemetry.enabled": false,
+  "yaml.schemas": {
+    ".schemas/evaluation_debug_schema.json": "/home/vincent/repos/photo/photonics-generation/photo_gen/config/evaluation/debug.yaml",
+    ".schemas/evaluation_base_schema.json": "/home/vincent/repos/photo/photonics-generation/photo_gen/config/evaluation/base.yaml",
+    ".schemas/evaluation_config_schema.json": "/home/vincent/repos/photo/photonics-generation/photo_gen/config/evaluation/config.yaml",
+    ".schemas/evaluation_diffusion_data_scaling_schema.json": "/home/vincent/repos/photo/photonics-generation/photo_gen/config/evaluation/diffusion_data_scaling.yaml",
+    ".schemas/fom_debug_schema.json": "/home/vincent/repos/photo/photonics-generation/photo_gen/config/evaluation/fom/debug.yaml",
+    ".schemas/fom_meep_schema.json": "/home/vincent/repos/photo/photonics-generation/photo_gen/config/evaluation/fom/meep.yaml",
+    ".schemas/functions_debug_schema.json": "/home/vincent/repos/photo/photonics-generation/photo_gen/config/evaluation/functions/debug.yaml",
+    ".schemas/functions_basic_schema.json": "/home/vincent/repos/photo/photonics-generation/photo_gen/config/evaluation/functions/basic.yaml",
+    ".schemas/functions_complete_schema.json": "/home/vincent/repos/photo/photonics-generation/photo_gen/config/evaluation/functions/complete.yaml",
+    ".schemas/datasets_diffusion_data_scaling_schema.json": "/home/vincent/repos/photo/photonics-generation/photo_gen/config/evaluation/datasets/diffusion_data_scaling.yaml"
+  }
+}

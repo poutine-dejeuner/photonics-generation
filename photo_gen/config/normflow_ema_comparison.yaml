@@ -1,0 +1,13 @@
+# Normalizing Flow with EMA comparison configuration
+defaults:
+  - comparison_config
+  - model: normflow
+  - inference: normflow
+
+experiment:
+  name: "normflow_ema_comparison"
+  description: "Normalizing Flow with EMA model comparison with diffusion models"
+  tags: ["normflow", "ema", "comparison"]
+
+model:
+  ema_decay: 0.9999

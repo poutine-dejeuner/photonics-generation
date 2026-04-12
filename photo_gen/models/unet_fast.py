@@ -9,6 +9,7 @@ from tqdm import tqdm
 import hydra
 from timm.utils.model_ema import ModelEmaV3
 from torch.amp import GradScaler, autocast
+from omegaconf import OmegaConf
 
 from photo_gen.utils.utils import save_checkpoint, get_num_params
 from photo_gen.utils.unet_utils import UNetPad, DDPM_Scheduler
@@ -16,13 +17,12 @@ from photo_gen.utils.unet_utils import UNetPad, DDPM_Scheduler
 from icecream import ic
 
 
-def train_fast(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir: os.PathLike, run=None):
+def train_fast(data: np.ndarray, cfg: OmegaConf, checkpoint_path: os.PathLike, savedir: os.PathLike, run=None):
     """
     Optimized training function with mixed precision, larger batch sizes, and memory optimizations.
     """
     # Training parameters
     n_epochs = cfg.n_epochs
-    ic(n_epochs)
     lr = cfg.lr
     batch_size = getattr(cfg, 'batch_size', 32)
     num_time_steps = cfg.num_time_steps
@@ -110,8 +110,8 @@ def train_fast(data: np.ndarray, cfg, checkpoint_path: os.PathLike, savedir: os.
         model.load_state_dict(checkpoint['weights'])
         ema.load_state_dict(checkpoint['ema'])
         optimizer.load_state_dict(checkpoint['optimizer'])
-        if 'epoch' in checkpoint:
-            start_epoch = checkpoint['epoch']
+        # if 'epoch' in checkpoint:
+        #     start_epoch = checkpoint['epoch']
         if scaler and 'scaler' in checkpoint:
             scaler.load_state_dict(checkpoint['scaler'])
         print(f"Resumed from epoch {start_epoch}")

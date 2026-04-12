@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 
 from photo_gen.utils.utils import set_seed
 from photo_gen.utils.parameter_counting import count_parameters
+from timm.utils.model_ema import ModelEmaV3
 
 
 class Generator(nn.Module):
@@ -186,6 +187,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
         wgan.generator.parameters(), lr=lr_g, betas=(0.5, 0.9))
     optimizer_C = optim.Adam(wgan.critic.parameters(),
                              lr=lr_c, betas=(0.5, 0.9))
+    ema_g = ModelEmaV3(wgan.generator, decay=cfg.model.ema_decay)
 
     dataset = TensorDataset(data)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True,
@@ -199,6 +201,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
         wgan.critic.load_state_dict(checkpoint['critic'])
         optimizer_G.load_state_dict(checkpoint['optimizer_G'])
         optimizer_C.load_state_dict(checkpoint['optimizer_C'])
+        ema_g.load_state_dict(checkpoint['ema_generator'])
         start_epoch = checkpoint['epoch'] + 1
         print(f"Resumed from epoch {start_epoch}")
 
@@ -242,6 +245,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
 
                 g_loss.backward()
                 optimizer_G.step()
+                ema_g.update(wgan.generator)
 
                 epoch_g_loss += g_loss.item()
                 g_updates += 1
@@ -275,6 +279,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                 'critic': wgan.critic.state_dict(),
                 'optimizer_G': optimizer_G.state_dict(),
                 'optimizer_C': optimizer_C.state_dict(),
+                'ema_generator': ema_g.state_dict(),
                 'config': {
                     'latent_dim': latent_dim,
                     'img_channels': img_channels,
@@ -284,7 +289,8 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                     'lambda_gp': lambda_gp,
                     'lr_c': lr_c,
                     'lr_g': lr_g,
-                    'batch_size': batch_size
+                    'batch_size': batch_size,
+                    'ema_decay': cfg.model.ema_decay,
                 }
             }
             torch.save(checkpoint, checkpoint_path)
@@ -298,6 +304,7 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                 'critic': wgan.critic.state_dict(),
                 'optimizer_G': optimizer_G.state_dict(),
                 'optimizer_C': optimizer_C.state_dict(),
+                'ema_generator': ema_g.state_dict(),
                 'config': {
                     'latent_dim': latent_dim,
                     'img_channels': img_channels,
@@ -307,7 +314,8 @@ def train(data: np.ndarray, cfg, checkpoint_path: str, savedir: str, run=None):
                     'lambda_gp': lambda_gp,
                     'lr_c': lr_c,
                     'lr_g': lr_g,
-                    'batch_size': batch_size
+                    'batch_size': batch_size,
+                    'ema_decay': cfg.model.ema_decay,
                 }
             }
             torch.save(checkpoint, checkpoint_path)
@@ -361,7 +369,9 @@ def inference(checkpoint_path: str, savepath: str, cfg):
                 device=device)
 
     wgan.generator.load_state_dict(checkpoint['generator'])
-    wgan.generator.eval()
+    ema_g = ModelEmaV3(wgan.generator, decay=model_cfg.get('ema_decay', 0.9999))
+    ema_g.load_state_dict(checkpoint['ema_generator'])
+    generator = ema_g.module.eval()
 
     print(f"Generating {n_samples} samples...")
 
@@ -373,7 +383,7 @@ def inference(checkpoint_path: str, savepath: str, cfg):
             current_batch_size = min(batch_size, n_samples - i)
             z = torch.randn(current_batch_size,
                             model_cfg['latent_dim']).to(device)
-            batch_imgs = wgan.generator(z)
+            batch_imgs = generator(z)
             generated_images.append(batch_imgs.cpu().numpy())
 
     generated_images = np.concatenate(generated_images, axis=0)

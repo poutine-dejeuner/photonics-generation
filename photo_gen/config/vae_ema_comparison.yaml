@@ -1,0 +1,15 @@
+# VAE with EMA comparison configuration
+defaults:
+  - comparison_config
+  - model: vae
+  - train: vae
+  - inference: vae
+
+experiment:
+  name: "vae_ema_comparison"
+  description: "VAE with EMA model comparison with diffusion models"
+  tags: ["vae", "ema", "comparison", "beta-vae"]
+
+model:
+  beta: 1.0
+  ema_decay: 0.9999

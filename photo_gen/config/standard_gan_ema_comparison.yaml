@@ -1,0 +1,14 @@
+# Standard GAN with EMA comparison configuration
+defaults:
+  - comparison_config
+  - model: standard_gan
+  - train: standard_gan
+  - inference: standard_gan
+
+experiment:
+  name: "standard_gan_ema_comparison"
+  description: "Standard GAN with EMA model comparison with diffusion models"
+  tags: ["standard_gan", "ema", "comparison"]
+
+model:
+  ema_decay: 0.9999

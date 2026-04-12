@@ -314,7 +314,7 @@ def inference(cfg,
     samples = padding_fn.inverse(samples).squeeze()
     samples = samples.cpu().numpy()
     samples = (samples - samples.min()) / (samples.max() - samples.min())
-    assert samples.shape == (n_images, 101, 91), samples.shape
+    assert samples.shape == (n_images, 101, 91) or samples.shape == (101,91), samples.shape
     np.save(savepath / "images.npy", samples)
 
     return samples
