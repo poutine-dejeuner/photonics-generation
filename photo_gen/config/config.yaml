@@ -3,6 +3,7 @@ defaults:
   - model: unet_fast
   - train: unet_fast
   - evaluation: diffusion_data_scaling
+  - experiments: unet
 
 # Experiment configuration
 debug: False

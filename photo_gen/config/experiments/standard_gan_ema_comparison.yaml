@@ -1,9 +1,9 @@
-# Standard GAN with EMA comparison configuration
+# @package _global_
+
 defaults:
-  - comparison_config
-  - model: standard_gan
-  - train: standard_gan
-  - inference: standard_gan
+  - override /model: standard_gan
+  - override /train: standard_gan
+  - override /inference: standard_gan
 
 experiment:
   name: "standard_gan_ema_comparison"

@@ -1,8 +1,8 @@
-# Normalizing Flow with EMA comparison configuration
+# @package _global_
+
 defaults:
-  - comparison_config
-  - model: normflow
-  - inference: normflow
+  - override /model: normflow
+  - override /inference: normflow
 
 experiment:
   name: "normflow_ema_comparison"

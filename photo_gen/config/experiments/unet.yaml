@@ -1,0 +1,10 @@
+# @package _global_
+
+defaults:
+  - override /model: unet
+  - override /train: unet
+
+experiment:
+  name: "unet_comparison"
+  description: "UNet diffusion model for comparison"
+  tags: ["unet", "diffusion", "comparison"]

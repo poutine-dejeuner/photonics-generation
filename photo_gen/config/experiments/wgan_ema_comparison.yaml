@@ -1,9 +1,9 @@
-# WGAN-GP with EMA comparison configuration
+# @package _global_
+
 defaults:
-  - comparison_config
-  - model: wgan
-  - train: wgan
-  - inference: wgan
+  - override /model: wgan
+  - override /train: wgan
+  - override /inference: wgan
 
 experiment:
   name: "wgan_ema_comparison"
